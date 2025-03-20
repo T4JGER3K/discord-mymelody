@@ -43,9 +43,9 @@ client.on('messageCreate', async message => {
     // Komenda $ticket zglos
     if (message.content.startsWith('$ticket zglos')) {
         const embed = new EmbedBuilder()
-            .setTitle("zglos")
-            .setDescription("Kliknij poniższy przycisk, aby zgłosić użytkownika.")
-            .setColor(0x00AE86);
+            .setTitle("ZGŁOŚ UŻYTKOWNIKA")
+            .setDescription("jeśli uważasz, że użytkownik łamie regulamin naszego serwera możesz go zgłosić klikając w poniższy przycisk")
+            .setColor(0xFF0000);
 
         const button = new ButtonBuilder()
             .setCustomId('create_ticket_zglos')
@@ -58,13 +58,13 @@ client.on('messageCreate', async message => {
     // Komenda $ticket pomoc
     else if (message.content.startsWith('$ticket pomoc')) {
         const embed = new EmbedBuilder()
-            .setTitle("pomoc")
-            .setDescription("Kliknij przycisk poniżej, aby uzyskać pomoc.")
+            .setTitle("ZGŁOŚ PROBLEM")
+            .setDescription("Jeśli chciałbyś zgłosić problem dotyczący funkcjonowania naszego serwera Discord, kliknij poniższy przycisk.")
             .setColor(0x00AE86);
 
         const button = new ButtonBuilder()
             .setCustomId('create_ticket_pomoc')
-            .setLabel('Utwórz Ticket Pomoc')
+            .setLabel('zgłoś problem')
             .setStyle(ButtonStyle.Primary);
 
         const row = new ActionRowBuilder().addComponents(button);
@@ -119,20 +119,22 @@ client.on('interactionCreate', async interaction => {
                 allowedMentions: { users: [interaction.user.id] } 
             });
 
-            // Ustalamy tytuł i opis embed'a w zależności od wywołanej komendy
-            let embedTitle, descriptionText;
+            // Ustalamy tytuł, opis i kolor embed'a w zależności od wywołanej komendy
+            let embedTitle, descriptionText, embedColor;
             if (interaction.customId === 'create_ticket_zglos') {
-                embedTitle = "zglos";
+                embedTitle = "ZGŁOŚ UŻYTKOWNIKA";
                 descriptionText = "Napisz nick użytkownika oraz powód zgłoszenia i poczekaj na odpowiedź admina.";
+                embedColor = 0xFF0000; // kolor czerwony jak przycisk Danger
             } else {
-                embedTitle = "pomoc";
+                embedTitle = "ZGŁOŚ PROBLEM";
                 descriptionText = "Opisz dokładnie swój problem i oznacz administratorów.";
+                embedColor = 0x00AE86; // kolor taki sam jak przycisk Primary
             }
 
             const ticketEmbed = new EmbedBuilder()
                 .setTitle(embedTitle)
                 .setDescription(descriptionText)
-                .setColor(0xFF0000);
+                .setColor(embedColor);
 
             const closeButton = new ButtonBuilder()
                 .setCustomId('close_ticket')
