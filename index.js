@@ -40,6 +40,7 @@ client.once('ready', () => {
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
+    // Komenda ticket zglos
     if (message.content.startsWith('$ticket zglos')) {
         const embed = new EmbedBuilder()
             .setTitle("System Ticket")
@@ -47,30 +48,46 @@ client.on('messageCreate', async message => {
             .setColor(0x00AE86);
 
         const button = new ButtonBuilder()
-            .setCustomId('create_ticket')
+            .setCustomId('create_ticket_zglos')
             .setLabel('Utwórz Ticket')
             .setStyle(ButtonStyle.Primary);
 
         const row = new ActionRowBuilder().addComponents(button);
         await message.channel.send({ embeds: [embed], components: [row] });
     }
+    // Komenda ticket pomoc
     else if (message.content.startsWith('$ticket pomoc')) {
-        message.channel.send(
-            '**Ticket Bot Help:**\n' +
-            '`$ticket zglos` - Tworzy wiadomość z przyciskiem do tworzenia ticketu.\n' +
-            '`$ticket pomoc` - Wyświetla pomoc.'
-        );
+        const embed = new EmbedBuilder()
+            .setTitle("System Ticket")
+            .setDescription("Kliknij przycisk poniżej, aby utworzyć ticket pomoc.")
+            .setColor(0x00AE86);
+
+        const button = new ButtonBuilder()
+            .setCustomId('create_ticket_pomoc')
+            .setLabel('Utwórz Ticket Pomoc')
+            .setStyle(ButtonStyle.Primary);
+
+        const row = new ActionRowBuilder().addComponents(button);
+        await message.channel.send({ embeds: [embed], components: [row] });
     }
 });
 
 client.on('interactionCreate', async interaction => {
     if (!interaction.isButton()) return;
 
-    if (interaction.customId === 'create_ticket') {
+    if (interaction.customId === 'create_ticket_zglos' || interaction.customId === 'create_ticket_pomoc') {
         try {
             const guild = interaction.guild;
             const username = interaction.user.username;
             const channelName = `ticket-${username}`;
+
+            // Dodajemy uprawnienie MentionEveryone do użytkownika tworzącego kanał
+            const userAllowedPermissions = [
+                PermissionsBitField.Flags.ViewChannel,
+                PermissionsBitField.Flags.SendMessages,
+                PermissionsBitField.Flags.ReadMessageHistory,
+                PermissionsBitField.Flags.MentionEveryone
+            ];
 
             const ticketChannel = await guild.channels.create({
                 name: channelName,
@@ -83,11 +100,15 @@ client.on('interactionCreate', async interaction => {
                     },
                     {
                         id: interaction.user.id,
-                        allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory]
+                        allow: userAllowedPermissions
                     },
                     {
                         id: ADMIN_ROLE_ID,
-                        allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory]
+                        allow: [
+                            PermissionsBitField.Flags.ViewChannel,
+                            PermissionsBitField.Flags.SendMessages,
+                            PermissionsBitField.Flags.ReadMessageHistory
+                        ]
                     }
                 ]
             });
@@ -98,9 +119,17 @@ client.on('interactionCreate', async interaction => {
                 allowedMentions: { users: [interaction.user.id] } 
             });
 
+            // Ustalamy treść embed'a w zależności od wybranej opcji
+            let descriptionText;
+            if (interaction.customId === 'create_ticket_zglos') {
+                descriptionText = "Napisz nick użytkownika oraz powód zgłoszenia i poczekaj na odpowiedź admina.";
+            } else {
+                descriptionText = "Opisz dokładnie swój problem i oznacz administratorów.";
+            }
+
             const ticketEmbed = new EmbedBuilder()
                 .setTitle("Nowy Ticket")
-                .setDescription("Napisz nick użytkownika oraz powód zgłoszenia i poczekaj na odpowiedź admina.")
+                .setDescription(descriptionText)
                 .setColor(0xFF0000);
 
             const closeButton = new ButtonBuilder()
