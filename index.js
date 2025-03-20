@@ -11,9 +11,6 @@ const {
     MessageFlags
 } = require('discord.js');
 
-// Token bota (upewnij się, że jest poprawny)
-const TOKEN = 'MTM1MDkxMzE0NDQ2MTE5NzQzNQ.GKNN_J.Zc1QtL3tI2z7JLbTJyw6CjOy9SeVLp29USPT_A';
-
 // Kategorie – ustaw odpowiednie ID kategorii
 const TICKET_CATEGORY_OPEN = '1350857928583807039';    // kategoria, do której będą trafiać nowe tickety
 const TICKET_CATEGORY_CLOSED = '1350857964675661885';  // kategoria zamkniętych ticketów
