@@ -49,7 +49,7 @@ client.on('messageCreate', async message => {
 
         const button = new ButtonBuilder()
             .setCustomId('create_ticket_zglos')
-            .setLabel('zgłoś użytkownika')
+            .setLabel('⚠️ zgłoś użytkownika')
             .setStyle(ButtonStyle.Danger);
 
         const row = new ActionRowBuilder().addComponents(button);
@@ -64,7 +64,7 @@ client.on('messageCreate', async message => {
 
         const button = new ButtonBuilder()
             .setCustomId('create_ticket_pomoc')
-            .setLabel('zgłoś problem')
+            .setLabel('🔨 zgłoś problem')
             .setStyle(ButtonStyle.Primary);
 
         const row = new ActionRowBuilder().addComponents(button);
@@ -79,7 +79,9 @@ client.on('interactionCreate', async interaction => {
         try {
             const guild = interaction.guild;
             const username = interaction.user.username;
-            const channelName = `ticket-${username}`;
+            // Ustal prefiks w zależności od komendy
+            const prefix = interaction.customId === 'create_ticket_zglos' ? 'zglos' : 'pomoc';
+            const channelName = `${prefix}-${username}`;
 
             // Użytkownik tworzący kanał otrzymuje uprawnienia, w tym do pingowania @everyone
             const userAllowedPermissions = [
