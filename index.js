@@ -92,6 +92,12 @@ client.on('interactionCreate', async interaction => {
                 ]
             });
 
+            // Wzmianka użytkownika w nowo utworzonym kanale
+            await ticketChannel.send({ 
+                content: `<@${interaction.user.id}>`, 
+                allowedMentions: { users: [interaction.user.id] } 
+            });
+
             const ticketEmbed = new EmbedBuilder()
                 .setTitle("Nowy Ticket")
                 .setDescription("Napisz nick użytkownika oraz powód zgłoszenia i poczekaj na odpowiedź admina.")
