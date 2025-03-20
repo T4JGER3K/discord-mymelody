@@ -40,26 +40,26 @@ client.once('ready', () => {
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
-    // Komenda ticket zglos
+    // Komenda $ticket zglos
     if (message.content.startsWith('$ticket zglos')) {
         const embed = new EmbedBuilder()
-            .setTitle("System Ticket")
-            .setDescription("Kliknij przycisk poniżej, aby utworzyć ticket.")
+            .setTitle("zglos")
+            .setDescription("Kliknij poniższy przycisk, aby zgłosić użytkownika.")
             .setColor(0x00AE86);
 
         const button = new ButtonBuilder()
             .setCustomId('create_ticket_zglos')
-            .setLabel('Utwórz Ticket')
-            .setStyle(ButtonStyle.Primary);
+            .setLabel('zgłoś użytkownika')
+            .setStyle(ButtonStyle.Danger);
 
         const row = new ActionRowBuilder().addComponents(button);
         await message.channel.send({ embeds: [embed], components: [row] });
     }
-    // Komenda ticket pomoc
+    // Komenda $ticket pomoc
     else if (message.content.startsWith('$ticket pomoc')) {
         const embed = new EmbedBuilder()
-            .setTitle("System Ticket")
-            .setDescription("Kliknij przycisk poniżej, aby utworzyć ticket pomoc.")
+            .setTitle("pomoc")
+            .setDescription("Kliknij przycisk poniżej, aby uzyskać pomoc.")
             .setColor(0x00AE86);
 
         const button = new ButtonBuilder()
@@ -81,7 +81,7 @@ client.on('interactionCreate', async interaction => {
             const username = interaction.user.username;
             const channelName = `ticket-${username}`;
 
-            // Dodajemy uprawnienie MentionEveryone do użytkownika tworzącego kanał
+            // Użytkownik tworzący kanał otrzymuje uprawnienia, w tym do pingowania @everyone
             const userAllowedPermissions = [
                 PermissionsBitField.Flags.ViewChannel,
                 PermissionsBitField.Flags.SendMessages,
@@ -119,16 +119,18 @@ client.on('interactionCreate', async interaction => {
                 allowedMentions: { users: [interaction.user.id] } 
             });
 
-            // Ustalamy treść embed'a w zależności od wybranej opcji
-            let descriptionText;
+            // Ustalamy tytuł i opis embed'a w zależności od wywołanej komendy
+            let embedTitle, descriptionText;
             if (interaction.customId === 'create_ticket_zglos') {
+                embedTitle = "zglos";
                 descriptionText = "Napisz nick użytkownika oraz powód zgłoszenia i poczekaj na odpowiedź admina.";
             } else {
+                embedTitle = "pomoc";
                 descriptionText = "Opisz dokładnie swój problem i oznacz administratorów.";
             }
 
             const ticketEmbed = new EmbedBuilder()
-                .setTitle("Nowy Ticket")
+                .setTitle(embedTitle)
                 .setDescription(descriptionText)
                 .setColor(0xFF0000);
 
