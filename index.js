@@ -51,9 +51,12 @@ client.on('guildMemberAdd', async member => {
                     iconURL: member.user.displayAvatarURL({ dynamic: true })
                 })
                 .setTitle('Witamy na serwerze!')
-                .setDescription(`Witaj <@${member.id}>! Miło Cię widzieć.`)
+                .setDescription(`Witaj <@${member.id}>!  
+                
+Cieszymy się, że dołączyłeś do naszej społeczności. Mamy nadzieję, że znajdziesz tu przyjazne środowisko oraz wiele ciekawych rozmów i aktywności. Zapoznaj się z regulaminem i zasadami serwera, aby w pełni korzystać z dostępnych możliwości. Jeszcze raz – witamy serdecznie!`)
                 .setColor(0x00AE86)
-                .setTimestamp();
+                .setTimestamp()
+                .setFooter({ text: '© tajgerek' });
             welcomeChannel.send({ embeds: [welcomeEmbed] });
         } else {
             console.error("Kanał powitalny nie został znaleziony lub nie jest tekstowy.");
@@ -71,13 +74,12 @@ client.on('messageCreate', async message => {
         const embed = new EmbedBuilder()
             .setTitle("ZGŁOŚ UŻYTKOWNIKA")
             .setDescription("Jeśli uważasz, że użytkownik łamie regulamin naszego serwera, możesz go zgłosić klikając w poniższy przycisk.")
-            .setColor(0xFF0000);
-
+            .setColor(0xFF0000)
+            .setFooter({ text: '© tajgerek' });
         const button = new ButtonBuilder()
             .setCustomId('create_ticket_zglos')
             .setLabel('⚠️ zgłoś użytkownika')
             .setStyle(ButtonStyle.Danger);
-
         const row = new ActionRowBuilder().addComponents(button);
         await message.channel.send({ embeds: [embed], components: [row] });
     }
@@ -86,13 +88,12 @@ client.on('messageCreate', async message => {
         const embed = new EmbedBuilder()
             .setTitle("ZGŁOŚ PROBLEM")
             .setDescription("Jeśli chciałbyś zgłosić problem dotyczący funkcjonowania naszego serwera Discord, kliknij poniższy przycisk.")
-            .setColor(0x00AE86);
-
+            .setColor(0x00AE86)
+            .setFooter({ text: '© tajgerek' });
         const button = new ButtonBuilder()
             .setCustomId('create_ticket_pomoc')
             .setLabel('🔨 zgłoś problem')
             .setStyle(ButtonStyle.Primary);
-
         const row = new ActionRowBuilder().addComponents(button);
         await message.channel.send({ embeds: [embed], components: [row] });
     }
@@ -105,11 +106,9 @@ client.on('interactionCreate', async interaction => {
         try {
             const guild = interaction.guild;
             const username = interaction.user.username;
-            // Ustal prefiks w zależności od komendy
             const prefix = interaction.customId === 'create_ticket_zglos' ? 'zglos' : 'pomoc';
             const channelName = `${prefix}-${username}`;
 
-            // Użytkownik tworzący kanał otrzymuje uprawnienia, w tym do pingowania @everyone
             const userAllowedPermissions = [
                 PermissionsBitField.Flags.ViewChannel,
                 PermissionsBitField.Flags.SendMessages,
@@ -141,34 +140,31 @@ client.on('interactionCreate', async interaction => {
                 ]
             });
 
-            // Wzmianka użytkownika w nowo utworzonym kanale
             await ticketChannel.send({ 
                 content: `<@${interaction.user.id}>`, 
                 allowedMentions: { users: [interaction.user.id] } 
             });
 
-            // Ustalamy tytuł, opis i kolor embed'a w zależności od wywołanej komendy
             let embedTitle, descriptionText, embedColor;
             if (interaction.customId === 'create_ticket_zglos') {
                 embedTitle = "ZGŁOŚ UŻYTKOWNIKA";
                 descriptionText = "Napisz nick użytkownika oraz powód zgłoszenia i poczekaj na odpowiedź admina.";
-                embedColor = 0xFF0000; // kolor czerwony jak przycisk Danger
+                embedColor = 0xFF0000;
             } else {
                 embedTitle = "ZGŁOŚ PROBLEM";
                 descriptionText = "Opisz dokładnie swój problem i oznacz administratorów.";
-                embedColor = 0x00AE86; // kolor taki sam jak przycisk Primary
+                embedColor = 0x00AE86;
             }
 
             const ticketEmbed = new EmbedBuilder()
                 .setTitle(embedTitle)
                 .setDescription(descriptionText)
-                .setColor(embedColor);
-
+                .setColor(embedColor)
+                .setFooter({ text: '© tajgerek' });
             const closeButton = new ButtonBuilder()
                 .setCustomId('close_ticket')
                 .setLabel('Zamknij Ticket')
                 .setStyle(ButtonStyle.Danger);
-
             const row = new ActionRowBuilder().addComponents(closeButton);
             await ticketChannel.send({ embeds: [ticketEmbed], components: [row] });
 
