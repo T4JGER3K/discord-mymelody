@@ -18,6 +18,9 @@ const TICKET_CATEGORY_CLOSED = '1350857964675661885';  // kategoria zamkniętych
 // ID roli administracji – wstaw właściwy identyfikator
 const ADMIN_ROLE_ID = '1350176648368230601';
 
+// ID kanału, do którego mają być wysyłane wiadomości powitalne
+const WELCOME_CHANNEL_ID = '1349878218693279928'; 
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds, 
@@ -35,6 +38,20 @@ client.once('ready', () => {
         type: ActivityType.Streaming,
         url: "https://www.twitch.tv/cinamoinka"
     });
+});
+
+// Wysyłanie wiadomości powitalnej przy dołączeniu nowego członka
+client.on('guildMemberAdd', async member => {
+    try {
+        const welcomeChannel = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
+        if (welcomeChannel && welcomeChannel.isTextBased()) {
+            welcomeChannel.send(`Witaj na serwerze, <@${member.id}>! Miło Cię widzieć.`);
+        } else {
+            console.error("Kanał powitalny nie został znaleziony lub nie jest tekstowy.");
+        }
+    } catch (error) {
+        console.error("Błąd przy wysyłaniu wiadomości powitalnej:", error);
+    }
 });
 
 client.on('messageCreate', async message => {
