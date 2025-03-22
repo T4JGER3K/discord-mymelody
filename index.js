@@ -18,8 +18,8 @@ const TICKET_CATEGORY_CLOSED = '1350857964675661885';  // kategoria zamkniętych
 // ID roli administracji – wstaw właściwy identyfikator
 const ADMIN_ROLE_ID = '1350176648368230601';
 
-// ID kanału, do którego mają być wysyłane wiadomości powitalne
-const WELCOME_CHANNEL_ID = '1349878218693279928'; 
+// ID kanału powitalnego ustawione na "1349878218693279928"
+const WELCOME_CHANNEL_ID = '1349878218693279928';
 
 const client = new Client({
     intents: [
@@ -45,7 +45,16 @@ client.on('guildMemberAdd', async member => {
     try {
         const welcomeChannel = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
         if (welcomeChannel && welcomeChannel.isTextBased()) {
-            welcomeChannel.send(`Witaj na serwerze, <@${member.id}>! Miło Cię widzieć.`);
+            const welcomeEmbed = new EmbedBuilder()
+                .setAuthor({ 
+                    name: member.user.tag, 
+                    iconURL: member.user.displayAvatarURL({ dynamic: true })
+                })
+                .setTitle('Witamy na serwerze!')
+                .setDescription(`Witaj <@${member.id}>! Miło Cię widzieć.`)
+                .setColor(0x00AE86)
+                .setTimestamp();
+            welcomeChannel.send({ embeds: [welcomeEmbed] });
         } else {
             console.error("Kanał powitalny nie został znaleziony lub nie jest tekstowy.");
         }
@@ -61,7 +70,7 @@ client.on('messageCreate', async message => {
     if (message.content.startsWith('$ticket zglos')) {
         const embed = new EmbedBuilder()
             .setTitle("ZGŁOŚ UŻYTKOWNIKA")
-            .setDescription("jeśli uważasz, że użytkownik łamie regulamin naszego serwera możesz go zgłosić klikając w poniższy przycisk")
+            .setDescription("Jeśli uważasz, że użytkownik łamie regulamin naszego serwera, możesz go zgłosić klikając w poniższy przycisk.")
             .setColor(0xFF0000);
 
         const button = new ButtonBuilder()
