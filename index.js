@@ -18,7 +18,7 @@ const TICKET_CATEGORY_CLOSED = '1350857964675661885';  // kategoria zamkniętych
 // ID roli administracji – wstaw właściwy identyfikator
 const ADMIN_ROLE_ID = '1350176648368230601';
 
-// ID kanału powitalnego ustawione na "1349878218693279928"
+// ID kanału powitalnego
 const WELCOME_CHANNEL_ID = '1349878218693279928';
 
 // ID kanału z regulaminem
@@ -48,28 +48,45 @@ client.on('guildMemberAdd', async member => {
     try {
         const welcomeChannel = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
         if (welcomeChannel && welcomeChannel.isTextBased()) {
+            
+            // Tworzymy embed w stylu podobnym do zrzutu
             const welcomeEmbed = new EmbedBuilder()
-                .setAuthor({ 
-                    name: member.user.tag, 
-                    iconURL: member.user.displayAvatarURL({ dynamic: true })
-                })
-                .setTitle('Witamy na serwerze!')
-                .setDescription(`Witaj <@${member.id}>!  
+                .setTitle('🎉 Witamy na serwerze! 🎉')
+                .setDescription(
+`Witaj <@${member.id}>!
 
-Cieszymy się, że dołączyłeś do naszej społeczności. Mamy nadzieję, że znajdziesz tu przyjazne środowisko oraz wiele ciekawych rozmów i aktywności. Zapoznaj się z regulaminem i zasadami serwera, aby w pełni korzystać z dostępnych możliwości. Jeszcze raz – witamy serdecznie!`)
+Cieszymy się, że dołączyłeś do naszej społeczności. Mamy nadzieję, że znajdziesz tu przyjazne środowisko oraz wiele ciekawych rozmów i aktywności. Zapoznaj się z regulaminem i zasadami serwera, aby w pełni korzystać z dostępnych możliwości. Jeszcze raz – witamy serdecznie!`
+                )
+                // Sekcja z nazwą użytkownika i datą utworzenia konta
+                .addFields(
+                    {
+                        name: 'Nazwa użytkownika',
+                        value: member.user.username,
+                        inline: true
+                    },
+                    {
+                        name: 'Data utworzenia konta',
+                        // poniżej wyświetla się data w formacie "xx czasu temu"
+                        value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`,
+                        inline: true
+                    }
+                )
+                // Miniaturka może być avatarem użytkownika lub dowolną grafiką
+                .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
                 .setColor(0x00AE86)
                 .setTimestamp()
                 .setFooter({ text: '© tajgerek' });
-            
-            // Utworzenie przycisku - link do kanału regulaminu
+
+            // Przygotowujemy przycisk z odsyłaczem do kanału regulaminu
             const regulaminButton = new ButtonBuilder()
                 .setStyle(ButtonStyle.Link)
                 .setLabel('📜 regulamin')
+                // Link do kanału regulaminu
                 .setURL(`https://discord.com/channels/${member.guild.id}/${REGULAMIN_CHANNEL_ID}`);
-            
+
             const row = new ActionRowBuilder().addComponents(regulaminButton);
-            
-            welcomeChannel.send({ embeds: [welcomeEmbed], components: [row] });
+
+            await welcomeChannel.send({ embeds: [welcomeEmbed], components: [row] });
         } else {
             console.error("Kanał powitalny nie został znaleziony lub nie jest tekstowy.");
         }
@@ -88,10 +105,12 @@ client.on('messageCreate', async message => {
             .setDescription("Jeśli uważasz, że użytkownik łamie regulamin naszego serwera, możesz go zgłosić klikając w poniższy przycisk.")
             .setColor(0xFF0000)
             .setFooter({ text: '© tajgerek' });
+
         const button = new ButtonBuilder()
             .setCustomId('create_ticket_zglos')
             .setLabel('⚠️ zgłoś użytkownika')
             .setStyle(ButtonStyle.Danger);
+
         const row = new ActionRowBuilder().addComponents(button);
         await message.channel.send({ embeds: [embed], components: [row] });
     }
@@ -102,10 +121,12 @@ client.on('messageCreate', async message => {
             .setDescription("Jeśli chciałbyś zgłosić problem dotyczący funkcjonowania naszego serwera Discord, kliknij poniższy przycisk.")
             .setColor(0x00AE86)
             .setFooter({ text: '© tajgerek' });
+
         const button = new ButtonBuilder()
             .setCustomId('create_ticket_pomoc')
             .setLabel('🔨 zgłoś problem')
             .setStyle(ButtonStyle.Primary);
+
         const row = new ActionRowBuilder().addComponents(button);
         await message.channel.send({ embeds: [embed], components: [row] });
     }
@@ -152,6 +173,7 @@ client.on('interactionCreate', async interaction => {
                 ]
             });
 
+            // Wzmianka użytkownika w nowo utworzonym kanale
             await ticketChannel.send({ 
                 content: `<@${interaction.user.id}>`, 
                 allowedMentions: { users: [interaction.user.id] } 
@@ -173,10 +195,12 @@ client.on('interactionCreate', async interaction => {
                 .setDescription(descriptionText)
                 .setColor(embedColor)
                 .setFooter({ text: '© tajgerek' });
+
             const closeButton = new ButtonBuilder()
                 .setCustomId('close_ticket')
                 .setLabel('Zamknij Ticket')
                 .setStyle(ButtonStyle.Danger);
+
             const row = new ActionRowBuilder().addComponents(closeButton);
             await ticketChannel.send({ embeds: [ticketEmbed], components: [row] });
 
