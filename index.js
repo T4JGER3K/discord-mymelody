@@ -21,6 +21,9 @@ const ADMIN_ROLE_ID = '1350176648368230601';
 // ID kanału powitalnego ustawione na "1349878218693279928"
 const WELCOME_CHANNEL_ID = '1349878218693279928';
 
+// ID kanału z regulaminem
+const REGULAMIN_CHANNEL_ID = '1348705958939066396';
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds, 
@@ -52,12 +55,21 @@ client.on('guildMemberAdd', async member => {
                 })
                 .setTitle('Witamy na serwerze!')
                 .setDescription(`Witaj <@${member.id}>!  
-                
+
 Cieszymy się, że dołączyłeś do naszej społeczności. Mamy nadzieję, że znajdziesz tu przyjazne środowisko oraz wiele ciekawych rozmów i aktywności. Zapoznaj się z regulaminem i zasadami serwera, aby w pełni korzystać z dostępnych możliwości. Jeszcze raz – witamy serdecznie!`)
                 .setColor(0x00AE86)
                 .setTimestamp()
                 .setFooter({ text: '© tajgerek' });
-            welcomeChannel.send({ embeds: [welcomeEmbed] });
+            
+            // Utworzenie przycisku - link do kanału regulaminu
+            const regulaminButton = new ButtonBuilder()
+                .setStyle(ButtonStyle.Link)
+                .setLabel('📜 regulamin')
+                .setURL(`https://discord.com/channels/${member.guild.id}/${REGULAMIN_CHANNEL_ID}`);
+            
+            const row = new ActionRowBuilder().addComponents(regulaminButton);
+            
+            welcomeChannel.send({ embeds: [welcomeEmbed], components: [row] });
         } else {
             console.error("Kanał powitalny nie został znaleziony lub nie jest tekstowy.");
         }
