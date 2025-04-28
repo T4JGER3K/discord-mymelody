@@ -98,6 +98,11 @@ client.on('messageCreate', async message => {
         if (!collected) return channel.send('Brak treści, anulowano.');
         const embedText = collected.first().content;
 
+        await channel.send('Czy to będzie wybór jednokrotnego wyboru (tak/nie)?');
+        collected = await channel.awaitMessages({ filter, max: 1, time: 60000 }).catch(() => null);
+        if (!collected) return channel.send('Brak odpowiedzi, anulowano.');
+        const singleChoice = collected.first().content.toLowerCase() === 'tak';
+
         const pairs = [];
         await channel.send('Podaj parę `:emotka: @rola`. Napisz `koniec` aby zakończyć.');
         while (true) {
@@ -124,8 +129,8 @@ client.on('messageCreate', async message => {
         for (const { emoji, roleId } of pairs) {
             await sent.react(emoji).catch(() => {});
             const idMatch = emoji.match(/<a?:\w+:(\d+)>/);
-            if (idMatch) dynamicReactionRoleMap[idMatch[1]] = roleId;
-            else dynamicReactionRoleMap[emoji] = roleId;
+            if (idMatch) dynamicReactionRoleMap[idMatch[1]] = { roleId, singleChoice };
+            else dynamicReactionRoleMap[emoji] = { roleId, singleChoice };
         }
         return;
     }
@@ -209,10 +214,20 @@ client.on('messageReactionAdd', async (reaction, user) => {
     if (reaction.partial) try { await reaction.fetch(); } catch { return; }
     if (!reaction.message.guild) return;
     const key = reaction.emoji.id || reaction.emoji.toString();
-    const roleId = dynamicReactionRoleMap[key];
-    if (roleId) {
+    const data = dynamicReactionRoleMap[key];
+    if (data) {
         const member = await reaction.message.guild.members.fetch(user.id);
-        if (!member.roles.cache.has(roleId)) member.roles.add(roleId).catch(() => {});
+        if (data.singleChoice) {
+            for (const [emojiKey, value] of Object.entries(dynamicReactionRoleMap)) {
+                if (value.roleId !== data.roleId && value.singleChoice) {
+                    const roleToRemove = value.roleId;
+                    if (member.roles.cache.has(roleToRemove)) {
+                        await member.roles.remove(roleToRemove).catch(() => {});
+                    }
+                }
+            }
+        }
+        if (!member.roles.cache.has(data.roleId)) member.roles.add(data.roleId).catch(() => {});
     }
 });
 
