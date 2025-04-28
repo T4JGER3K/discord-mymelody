@@ -8,21 +8,19 @@ const {
     ButtonBuilder, 
     ActionRowBuilder, 
     ButtonStyle,
-    MessageFlags
+    MessageFlags,
+    Partials
 } = require('discord.js');
 
 // Kategorie – ustaw odpowiednie ID kategorii
-overlay
-const TICKET_CATEGORY_OPEN   = '1350857928583807039';
+const TICKET_CATEGORY_OPEN = '1350857928583807039';
 const TICKET_CATEGORY_CLOSED = '1350857964675661885';
 
-// ID roli administracji – wstaw właściwy identyfikator
+// ID roli administracji
 const ADMIN_ROLE_ID = '1350176648368230601';
 
-// ID kanału powitalnego
+// ID kanału powitalnego i regulaminu
 const WELCOME_CHANNEL_ID = '1348705958939066393';
-
-// ID kanału z regulaminem
 const REGULAMIN_CHANNEL_ID = '1348705958939066396';
 
 const client = new Client({
@@ -33,10 +31,9 @@ const client = new Client({
         GatewayIntentBits.GuildMessageReactions,
         GatewayIntentBits.GuildMembers
     ],
-    partials: ['MESSAGE', 'CHANNEL', 'REACTION']
+    partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
 
-// Dynamiczne mapowanie emotek na role (ustawiane przez !reaction roles)
 let dynamicReactionRoleMap = {};
 
 client.once('ready', () => {
@@ -47,18 +44,13 @@ client.once('ready', () => {
     });
 });
 
-// ----- POWITANIE -----
 client.on('guildMemberAdd', async member => {
     try {
         const welcomeChannel = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
         if (welcomeChannel?.isTextBased()) {
             const welcomeEmbed = new EmbedBuilder()
                 .setTitle('🎉 Witamy na serwerze! 🎉')
-                .setDescription(
-`Witaj <@${member.id}>!
-
-Cieszymy się, że dołączyłeś do naszej społeczności. Zapoznaj się z regulaminem.`
-                )
+                .setDescription(`Witaj <@${member.id}>!\n\nCieszymy się, że dołączyłeś do naszej społeczności. Zapoznaj się z regulaminem.`)
                 .addFields(
                     { name: 'Nazwa użytkownika', value: member.user.username, inline: true },
                     { name: 'Data utworzenia konta', value: `<t:${Math.floor(member.user.createdTimestamp/1000)}:R>`, inline: true }
@@ -81,65 +73,53 @@ Cieszymy się, że dołączyłeś do naszej społeczności. Zapoznaj się z regu
     }
 });
 
-// ----- KOMENDY TEKSTOWE -----
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
     const { content, member, channel, guild } = message;
 
-    // --- 1) Reaction Roles ---
     if (content === '!reaction roles') {
         if (!member.permissions.has(PermissionsBitField.Flags.Administrator))
-            return channel.send('Tylko administratorzy może tworzyć reaction roles.');
+            return channel.send('Tylko administratorzy mogą tworzyć reaction roles.');
         const filter = m => m.author.id === message.author.id;
 
-        // 1. Kanał
         await channel.send('Wskaż kanał do wysłania embeda (wspomnij kanał).');
-        let collected = await channel.awaitMessages({ filter, max: 1, time: 60000, errors: ['time'] }).catch(() => null);
+        let collected = await channel.awaitMessages({ filter, max: 1, time: 60000 }).catch(() => null);
         if (!collected) return channel.send('Czas minął, anulowano.');
         const target = collected.first().mentions.channels.first();
         if (!target) return channel.send('Nieprawidłowy kanał.');
 
-        // 2. Tytuł embeda
         await channel.send('Podaj tytuł embeda:');
-        collected = await channel.awaitMessages({ filter, max: 1, time: 60000, errors: ['time'] }).catch(() => null);
+        collected = await channel.awaitMessages({ filter, max: 1, time: 60000 }).catch(() => null);
         if (!collected) return channel.send('Brak tytułu, anulowano.');
         const title = collected.first().content.trim();
 
-        // 3. Treść embeda
-        await channel.send('Podaj treść embeda (dowolny tekst):');
-        collected = await channel.awaitMessages({ filter, max: 1, time: 60000, errors: ['time'] }).catch(() => null);
+        await channel.send('Podaj treść embeda:');
+        collected = await channel.awaitMessages({ filter, max: 1, time: 60000 }).catch(() => null);
         if (!collected) return channel.send('Brak treści, anulowano.');
         const embedText = collected.first().content;
 
-        // 4. Emotikony + role
         const pairs = [];
         await channel.send('Podaj parę `:emotka: @rola`. Napisz `koniec` aby zakończyć.');
         while (true) {
-            collected = await channel.awaitMessages({ filter, max: 1, time: 120000, errors: ['time'] }).catch(() => null);
+            collected = await channel.awaitMessages({ filter, max: 1, time: 120000 }).catch(() => null);
             if (!collected) return channel.send('Czas minął, anulowano.');
             const entry = collected.first().content.trim();
             if (entry.toLowerCase() === 'koniec') break;
             const match = entry.match(/(<a?:\w+:(\d+)>|\p{Emoji_Presentation})\s+<@&(\d+)>/u);
-            if (!match) { 
-                await channel.send('Zły format, podaj `:emotka: @rola`.'); 
-                continue; 
-            }
+            if (!match) { await channel.send('Zły format, podaj `:emotka: @rola`.'); continue; }
             pairs.push({ emoji: match[1], roleId: match[3] });
         }
 
-        // 5. Kolor embeda
         await channel.send('Podaj kod koloru hex (np. #FF0000):');
-        collected = await channel.awaitMessages({ filter, max: 1, time: 60000, errors: ['time'] }).catch(() => null);
+        collected = await channel.awaitMessages({ filter, max: 1, time: 60000 }).catch(() => null);
         if (!collected) return channel.send('Brak koloru, anulowano.');
         const color = collected.first().content.trim();
 
-        // Tworzenie embeda
         const rrEmbed = new EmbedBuilder()
             .setColor(color)
             .setTitle(title)
             .setDescription(embedText);
 
-        // Wysyłanie embeda i reakcje
         const sent = await target.send({ embeds: [rrEmbed] });
         for (const { emoji, roleId } of pairs) {
             await sent.react(emoji).catch(() => {});
@@ -150,7 +130,6 @@ client.on('messageCreate', async message => {
         return;
     }
 
-    // --- 2) Ticket: zgłoś użytkownika ---
     if (content.startsWith('$ticket zglos')) {
         const embed = new EmbedBuilder()
             .setTitle("ZGŁOŚ UŻYTKOWNIKA")
@@ -165,7 +144,6 @@ client.on('messageCreate', async message => {
         return;
     }
 
-    // --- 3) Ticket: pomoc techniczna ---
     if (content.startsWith('$ticket pomoc')) {
         const embed = new EmbedBuilder()
             .setTitle("ZGŁOŚ PROBLEM")
@@ -181,12 +159,11 @@ client.on('messageCreate', async message => {
     }
 });
 
-// ----- OBSŁUGA BUTTONÓW (TICKETY) -----
 client.on('interactionCreate', async interaction => {
     if (!interaction.isButton()) return;
     const guild = interaction.guild;
-    const prefix = interaction.customId === 'create_ticket_zglos' ? 'zglos' : 'pomoc';
     if (interaction.customId === 'create_ticket_zglos' || interaction.customId === 'create_ticket_pomoc') {
+        const prefix = interaction.customId === 'create_ticket_zglos' ? 'zglos' : 'pomoc';
         const channelName = `${prefix}-${interaction.user.username}`;
         try {
             const ticketChannel = await guild.channels.create({
@@ -217,17 +194,16 @@ client.on('interactionCreate', async interaction => {
             await interaction.reply({ content: "Błąd tworzenia ticketa.", flags: MessageFlags.Ephemeral });
         }
     }
+
     if (interaction.customId === 'close_ticket') {
-        if (!interaction.member.roles.cache.has(ADMIN_ROLE_ID)) {
+        if (!interaction.member.roles.cache.has(ADMIN_ROLE_ID))
             return interaction.reply({ content: "Brak uprawnień.", flags: MessageFlags.Ephemeral });
-        }
         await interaction.channel.setParent(TICKET_CATEGORY_CLOSED);
         await interaction.channel.permissionOverwrites.edit(interaction.user.id, { ViewChannel: false });
         await interaction.reply("Ticket zamknięty.");
     }
 });
 
-// ----- OBSŁUGA REAKCJI (REACTION ROLES) -----
 client.on('messageReactionAdd', async (reaction, user) => {
     if (user.bot) return;
     if (reaction.partial) try { await reaction.fetch(); } catch { return; }
