@@ -89,35 +89,33 @@ client.on('messageCreate', async message => {
   }
 
   const filter = m => m.author.id === message.author.id;
+  // ask zwraca string (treść wiadomości) lub null
   const ask = async prompt => {
     await message.channel.send(prompt);
     const collected = await message.channel.awaitMessages({ filter, max: 1, time: 60000 }).catch(() => null);
-    return collected?.first();
+    return collected?.first()?.content ?? null;
   };
 
   // 1) kanał
-  const channelMsg = await ask('Wskaż kanał (w formie #nazwa):');
-  if (!channelMsg) return message.channel.send('Czas minął, anulowano.');
-  const target = channelMsg.mentions.channels.first();
+  const chanAnswer = await ask('Wskaż kanał (w formie #nazwa):');
+  if (!chanAnswer) return message.channel.send('Czas minął, anulowano.');
+  const target = message.mentions.channels.first();
   if (!target) return message.channel.send('Nieprawidłowy kanał.');
 
   // 2) tytuł
-  const titleMsg = await ask('Podaj tytuł embeda:');
-  if (!titleMsg) return message.channel.send('Czas minął, anulowano.');
-  const title = titleMsg.content;
+  const title = await ask('Podaj tytuł embeda:');
+  if (!title) return message.channel.send('Czas minął, anulowano.');
 
   // 3) treść
-  const contentMsg = await ask('Podaj treść embeda:');
-  if (!contentMsg) return message.channel.send('Czas minął, anulowano.');
-  const embedText = contentMsg.content;
+  const embedText = await ask('Podaj treść embeda:');
+  if (!embedText) return message.channel.send('Czas minął, anulowano.');
 
   // 4) pary emoji→rola (można wiele)
   const pairs = [];
   await message.channel.send('Podaj `:emotka: @rola`. Napisz `koniec`, aby zakończyć.');
   while (true) {
-    const entryMsg = await ask('');
-    if (!entryMsg) return message.channel.send('Czas minął, anulowano.');
-    const entry = entryMsg.content.trim();
+    const entry = await ask(''); 
+    if (!entry) return message.channel.send('Czas minął, anulowano.');
     if (entry.toLowerCase() === 'koniec') break;
     const match = entry.match(/(<a?:\w+:(\d+)>|\p{Emoji_Presentation})\s+<@&(\d+)>/u);
     if (!match) {
@@ -127,14 +125,13 @@ client.on('messageCreate', async message => {
     pairs.push({ emoji: match[1], roleId: match[3] });
   }
 
-  // Stworzenie embeda
+  // 5) tworzymy i wysyłamy embed
   const rrEmbed = withFooter(new EmbedBuilder()
     .setTitle(title)
     .setDescription(embedText)
     .setColor(0x00AE86)
   );
 
-  // Wysłanie i rejestracja reakcji
   const sent = await target.send({ embeds: [rrEmbed] });
   dynamicReactionRoleMap.set(sent.id, {});
   for (const { emoji, roleId } of pairs) {
@@ -143,10 +140,10 @@ client.on('messageCreate', async message => {
     dynamicReactionRoleMap.get(sent.id)[key] = { roleId, singleChoice: false };
   }
 
-  message.channel.send('Reaction roles utworzone!');
+  message.channel.send('✅ Reaction roles utworzone!');
 });
 
-// TICKET SYSTEM – wysłanie embedów z przyciskami
+// TICKET SYSTEM – wysyłanie embedów z przyciskami
 client.on('messageCreate', async message => {
   if (message.author.bot) return;
 
@@ -172,7 +169,7 @@ client.on('messageCreate', async message => {
   }
 });
 
-// OBSŁUGA INTERAKCJI PRZYCISKÓW TICKET
+// OBSŁUGA INTERAKCJI DLA TICKETÓW
 client.on('interactionCreate', async interaction => {
   if (!interaction.isButton()) return;
 
@@ -233,11 +230,8 @@ client.on('interactionCreate', async interaction => {
 client.on('messageReactionAdd', async (reaction, user) => {
   if (user.bot) return;
   if (reaction.partial) {
-    try { await reaction.fetch(); }
-    catch { return; }
+    try { await reaction.fetch(); } catch { return; }
   }
-
-  // ignoruj, jeśli autor wiadomości ≠ bot
   if (reaction.message.author.id !== client.user.id) return;
 
   const msgId = reaction.message.id;
@@ -250,7 +244,6 @@ client.on('messageReactionAdd', async (reaction, user) => {
   const member = await reaction.message.guild.members.fetch(user.id);
   if (!member) return;
 
-  // przypisz rolę
   if (!member.roles.cache.has(data.roleId)) {
     await member.roles.add(data.roleId).catch(() => {});
   }
