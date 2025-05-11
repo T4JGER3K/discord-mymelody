@@ -223,23 +223,27 @@ client.on('interactionCreate', async interaction => {
 
 // HANDLER REAKCJI
 client.on('messageReactionAdd', async (reaction, user) => {
+  // nie reagujemy na bota ani niepełne (partial) reakcje
   if (user.bot) return;
   if (reaction.partial) {
     try { await reaction.fetch(); } catch { return; }
   }
-  if (reaction.message.author.id !== client.user.id) return;
+
+  // **NOWE**: tylko reakcje pod WIADOMOŚCIĄ BOTA
+  if (!reaction.message.author || reaction.message.author.id !== client.user.id) return;
+
+  // **NOWE**: tylko jeśli tę wiadomość mamy w naszej mapie reaction-role
+  if (!dynamicReactionRoleMap.has(reaction.message.id)) return;
 
   const map = dynamicReactionRoleMap.get(reaction.message.id);
-  if (!map) return;
-
   const key = reaction.emoji.id || reaction.emoji.toString();
   const data = map[key];
   if (!data) return;
 
-  const member = await reaction.message.guild.members.fetch(user.id);
+  const member = await reaction.message.guild.members.fetch(user.id).catch(() => null);
   if (!member) return;
 
-  // jednokrotny wybór: usuwamy inne
+  // jednokrotny wybór: usuwamy inne role
   if (data.singleChoice) {
     for (const v of Object.values(map)) {
       if (v.singleChoice && v.roleId !== data.roleId && member.roles.cache.has(v.roleId)) {
@@ -248,6 +252,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
     }
   }
 
+  // dodajemy rolę jeśli jej jeszcze nie ma
   if (!member.roles.cache.has(data.roleId)) {
     await member.roles.add(data.roleId).catch(() => {});
   }
