@@ -82,7 +82,7 @@ client.on('guildMemberAdd', async member => {
   }
 });
 
-// KOMENDA $rr – tworzenie reaction-roles
+// KOMENDA $rr – tworzenie reaction-roles z indywidualnym kolektorem
 client.on('messageCreate', async message => {
   if (message.author.bot) return;
   if (message.content !== '$rr') return;
@@ -143,17 +143,66 @@ client.on('messageCreate', async message => {
   );
 
   const sent = await target.send({ embeds: [rrEmbed] });
-  dynamicReactionRoleMap.set(sent.id, {});
+
+  // Budujemy lokalną mapę emoji→dane
+  const localMap = {};
   for (const { emoji, roleId } of pairs) {
     await sent.react(emoji).catch(() => {});
     const key = emoji.match(/<a?:\w+:(\d+)>/)?.[1] || emoji;
-    dynamicReactionRoleMap.get(sent.id)[key] = { roleId, singleChoice };
+    localMap[key] = { roleId, singleChoice };
   }
 
-  message.channel.send(`✅ Reaction roles utworzone na kanale ${target}`);
+  // Zapisujemy tę mapę globalnie, gdybyś chciał później usuwać lub edytować
+  dynamicReactionRoleMap.set(sent.id, localMap);
+
+  // Tworzymy kolektor wyjątkowo TYLKO na tę wiadomość
+  const collector = sent.createReactionCollector({
+    filter: (reaction, user) => {
+      if (user.bot) return false;
+      // bierzemy klucz z emoji
+      const key = reaction.emoji.id || reaction.emoji.toString();
+      return Object.prototype.hasOwnProperty.call(localMap, key);
+    }
+  });
+
+  collector.on('collect', async (reaction, user) => {
+    const key = reaction.emoji.id || reaction.emoji.toString();
+    const data = localMap[key];
+    const member = await sent.guild.members.fetch(user.id).catch(() => null);
+    if (!member) return;
+
+    // jednokrotny wybór: usuwamy inne
+    if (data.singleChoice) {
+      for (const vKey of Object.keys(localMap)) {
+        if (vKey !== key && localMap[vKey].singleChoice && member.roles.cache.has(localMap[vKey].roleId)) {
+          await member.roles.remove(localMap[vKey].roleId).catch(() => {});
+        }
+      }
+    }
+
+    // dodaj rolę
+    if (!member.roles.cache.has(data.roleId)) {
+      await member.roles.add(data.roleId).catch(() => {});
+    }
+  });
+
+  // (opcjonalne) obsługa usunięcia reakcji:
+  collector.on('remove', async (reaction, user) => {
+    const key = reaction.emoji.id || reaction.emoji.toString();
+    const data = localMap[key];
+    if (!data) return;
+    if (data.singleChoice) return; // przy singleChoice nie zdejmujemy przy usunięciu
+    const member = await sent.guild.members.fetch(user.id).catch(() => null);
+    if (!member) return;
+    if (member.roles.cache.has(data.roleId)) {
+      await member.roles.remove(data.roleId).catch(() => {});
+    }
+  });
+
+  await message.channel.send(`✅ Reaction roles utworzone na kanale ${target}`);
 });
 
-// TICKET SYSTEM
+// TICKET SYSTEM (bez zmian)
 client.on('messageCreate', async message => {
   if (message.author.bot) return;
   if (message.content.startsWith('$ticket zglos') || message.content.startsWith('$ticket pomoc')) {
@@ -221,61 +270,6 @@ client.on('interactionCreate', async interaction => {
     await interaction.channel.setParent(TICKET_CATEGORY_CLOSED);
     await interaction.channel.permissionOverwrites.edit(interaction.user.id, { ViewChannel: false });
     await interaction.reply('Ticket zamknięty.');
-  }
-});
-
-// POPRAWIONY HANDLER REAKCJI
-client.on('messageReactionAdd', async (reaction, user) => {
-  if (user.bot) return;
-
-  // fetch reaction if partial
-  if (reaction.partial) {
-    try {
-      await reaction.fetch();
-    } catch {
-      return;
-    }
-  }
-
-  // fetch message if partial
-  if (reaction.message.partial) {
-    try {
-      await reaction.message.fetch();
-    } catch {
-      return;
-    }
-  }
-
-  // tylko pod wiadomościami bota
-  if (!reaction.message.author || reaction.message.author.id !== client.user.id) {
-    console.log(`IGNORUJĘ reakcję na message.id=${reaction.message.id} od author=${reaction.message.author?.id}`);
-    return;
-  }
-
-  // tylko jeśli jest w naszej mapie
-  if (!dynamicReactionRoleMap.has(reaction.message.id)) {
-    console.log(`IGNORUJĘ message.id=${reaction.message.id}, bo nie ma w dynamicReactionRoleMap`);
-    return;
-  }
-
-  const map = dynamicReactionRoleMap.get(reaction.message.id);
-  const key = reaction.emoji.id || reaction.emoji.toString();
-  const data = map[key];
-  if (!data) return;
-
-  const member = await reaction.message.guild.members.fetch(user.id).catch(() => null);
-  if (!member) return;
-
-  if (data.singleChoice) {
-    for (const v of Object.values(map)) {
-      if (v.singleChoice && v.roleId !== data.roleId && member.roles.cache.has(v.roleId)) {
-        await member.roles.remove(v.roleId).catch(() => {});
-      }
-    }
-  }
-
-  if (!member.roles.cache.has(data.roleId)) {
-    await member.roles.add(data.roleId).catch(() => {});
   }
 });
 
