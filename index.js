@@ -1,183 +1,272 @@
-const { Client, GatewayIntentBits, Partials, PermissionsBitField, ChannelType } = require('discord.js');
+const { 
+  Client, 
+  GatewayIntentBits, 
+  ActivityType, 
+  PermissionsBitField, 
+  ChannelType, 
+  EmbedBuilder, 
+  ButtonBuilder, 
+  ActionRowBuilder, 
+  ButtonStyle,
+  Partials
+} = require('discord.js');
+
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMessageReactions,
-        GatewayIntentBits.GuildMembers,
-    ],
-    partials: [Partials.Message, Partials.Channel, Partials.Reaction]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMessageReactions,
+    GatewayIntentBits.GuildMembers
+  ],
+  partials: [
+    Partials.Message,
+    Partials.Channel,
+    Partials.Reaction,
+    Partials.User
+  ]
 });
 
-const prefix = '$';
-const dynamicReactionRoleMap = new Map(); // mapuje ID wiadomości → obiekt { emojiKey: rolaID, ... }
+// PODMIEŃ NA SWOJE ID
+const TICKET_CATEGORY_OPEN   = '1350857928583807039';
+const TICKET_CATEGORY_CLOSED = '1350857964675661885';
+const ADMIN_ROLE_ID          = '1350176648368230601';
+const WELCOME_CHANNEL_ID     = '1348705958939066393';
+const REGULAMIN_CHANNEL_ID   = '1348705958939066396';
+
+// messageId → { emojiKey: { roleId, singleChoice } }
+const dynamicReactionRoleMap = new Map();
+
+// helper: dodaje stopkę © tajgerek
+function withFooter(embed) {
+  return embed.setFooter({ text: '© tajgerek' });
+}
 
 client.once('ready', () => {
-    console.log(`Bot zalogowany jako ${client.user.tag}`);
+  console.log(`Zalogowano jako ${client.user.tag}`);
+  client.user.setActivity("cinamoinka", {
+    type: ActivityType.Streaming,
+    url: "https://www.twitch.tv/cinamoinka"
+  });
 });
 
-// Obsługa komend tekstowych
-client.on('messageCreate', async (message) => {
-    if (!message.content.startsWith(prefix) || message.author.bot) return;
-    const args = message.content.slice(prefix.length).trim().split(/ +/);
-    const command = args.shift().toLowerCase();
+// POWITANIE
+client.on('guildMemberAdd', async member => {
+  try {
+    const ch = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
+    if (!ch?.isTextBased()) return;
 
-    // Komenda $rr – tworzy wiadomość z reakcjami przydzielającymi role
-    if (command === 'rr') {
-        // Tylko administrator może użyć tej komendy
-        if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-            return message.reply("Nie masz uprawnień do użycia tej komendy.");
-        }
-        // Wyznaczamy kanał (pierwszy mention lub bieżący)
-        const targetChannel = message.mentions.channels.first() || message.channel;
-        // Wyciągamy treść wiadomości z cudzysłowów
-        const textMatch = message.content.match(/"([^"]+)"/);
-        if (!textMatch) {
-            return message.reply('Poprawne użycie: $rr #kanał "Treść wiadomości" [emoji rola] [emoji rola] ...');
-        }
-        const text = textMatch[1];
-        // Pozostałe argumenty po treści (powinny być w parach emoji + rola)
-        const parts = message.content
-            .slice(message.content.indexOf(textMatch[0]) + textMatch[0].length)
-            .trim()
-            .split(/\s+/);
-        if (parts.length % 2 !== 0 || parts.length === 0) {
-            return message.reply('Nieprawidłowa liczba argumentów. Pamiętaj o parach `emoji rola`.');
-        }
-        // Wysyłamy wiadomość z tekstem
-        const sentMessage = await targetChannel.send(text);
-        // Przetwarzamy pary (emoji, rola)
-        for (let i = 0; i < parts.length; i += 2) {
-            const emojiRaw = parts[i];
-            const roleMention = parts[i + 1];
-            // Wyciągamy ID roli z mentionu (np. <@&123456>)
-            const roleIdMatch = roleMention.match(/\d+/);
-            if (!roleIdMatch) {
-                message.reply(`Niepoprawny format roli: ${roleMention}`);
-                continue;
-            }
-            const role = message.guild.roles.cache.get(roleIdMatch[0]);
-            if (!role) {
-                message.reply(`Nie znaleziono roli: ${roleMention}`);
-                continue;
-            }
-            // Dodajemy reakcję do wiadomości
-            try {
-                await sentMessage.react(emojiRaw);
-            } catch (err) {
-                console.error('Nie udało się dodać reakcji:', err);
-            }
-            // Ustalamy klucz emoji (ID dla emoji niestandardowych lub nazwa/unicode)
-            let emojiKey;
-            const customIdMatch = emojiRaw.match(/^<a?:\w+:(\d+)>$/);
-            if (customIdMatch) {
-                emojiKey = customIdMatch[1]; // ID emoji niestandardowego
-            } else {
-                emojiKey = emojiRaw; // zwykły unicode lub uproszczony
-            }
-            // Zapisujemy mapowanie w dynamicReactionRoleMap
-            const mapEntry = dynamicReactionRoleMap.get(sentMessage.id) || {};
-            mapEntry[emojiKey] = role.id;
-            dynamicReactionRoleMap.set(sentMessage.id, mapEntry);
-        }
-        return;
-    }
-
-    // Komenda $ticket – otwiera nowy kanał (ticket) dla użytkownika
-    if (command === 'ticket') {
-        const guild = message.guild;
-        const ticketName = `ticket-${message.author.id}`;
-        // Sprawdzamy, czy użytkownik już ma otwarty ticket
-        if (guild.channels.cache.some(c => c.name === ticketName)) {
-            return message.reply("Masz już otwarty ticket.");
-        }
-        // Tworzymy kanał tekstowy z ograniczonym dostępem
-        const channel = await guild.channels.create({
-            name: ticketName,
-            type: ChannelType.GuildText,
-            permissionOverwrites: [
-                {
-                    id: guild.roles.everyone.id,
-                    deny: [PermissionsBitField.Flags.ViewChannel],
-                },
-                {
-                    id: message.author.id,
-                    allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
-                },
-                // Opcjonalnie: można dodać także ID roli administracyjnej/moderatora
-            ],
-        });
-        channel.send(`Witaj ${message.author}, jak możemy Ci pomóc?`);
-        return message.reply(`Twój ticket został utworzony: ${channel}`);
-    }
-});
-
-// Event gdy użytkownik dołącza do serwera – wysyłamy powitanie
-client.on('guildMemberAdd', member => {
-    // Szukamy kanału powitań (np. nazwanego "powitania" lub "welcome")
-    const welcomeChannel = member.guild.channels.cache.find(ch => 
-        ch.name.toLowerCase().includes('powitania') ||
-        ch.name.toLowerCase().includes('welcome')
+    const welcomeEmbed = withFooter(new EmbedBuilder()
+      .setTitle('🎉 Witamy na serwerze! 🎉')
+      .setDescription(
+        `Witaj <@${member.id}>!\n\n` +
+        `Cieszymy się, że dołączyłeś do naszej społeczności. ` +
+        `Zapoznaj się z regulaminem, aby w pełni korzystać z serwera.`
+      )
+      .addFields(
+        { name: 'Nazwa użytkownika',    value: member.user.username, inline: true },
+        { name: 'Data utworzenia konta', value: `<t:${Math.floor(member.user.createdTimestamp/1000)}:R>`, inline: true }
+      )
+      .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+      .setColor(0x00AE86)
+      .setTimestamp()
     );
-    if (welcomeChannel) {
-        welcomeChannel.send(`Witaj ${member}, na naszym serwerze!`);
-    }
+
+    const regBtn = new ButtonBuilder()
+      .setStyle(ButtonStyle.Link)
+      .setLabel('📜 Regulamin')
+      .setURL(`https://discord.com/channels/${member.guild.id}/${REGULAMIN_CHANNEL_ID}`);
+
+    await ch.send({ embeds: [welcomeEmbed], components: [ new ActionRowBuilder().addComponents(regBtn) ] });
+  } catch (err) {
+    console.error("Błąd powitania:", err);
+  }
 });
 
-// Obsługa dodania reakcji – przydzielanie roli
-client.on('messageReactionAdd', async (reaction, user) => {
-    if (user.bot) return; // ignorujemy reakcje botów
-    // Jeśli reaction jest partial, pobieramy pełne dane
-    if (reaction.partial) {
-        try {
-            await reaction.fetch();
-        } catch (error) {
-            console.error('Błąd przy pobieraniu reakcji:', error);
-            return;
+// KOMENDA $rr – tworzenie reaction-roles z indywidualnym kolektorem
+client.on('messageCreate', async message => {
+  if (message.author.bot) return;
+  if (message.content !== '$rr') return;
+
+  if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+    return message.channel.send('Tylko administratorzy mogą używać tej komendy.');
+  }
+
+  const filter = m => m.author.id === message.author.id;
+
+  // 1) wybór kanału
+  await message.channel.send('1) Wskaż kanał (np. #nazwa):');
+  let collected = await message.channel.awaitMessages({ filter, max: 1, time: 60000 }).catch(() => null);
+  if (!collected?.size) return message.channel.send('Czas minął, anulowano.');
+  const target = collected.first().mentions.channels.first();
+  if (!target) return message.channel.send('Nieprawidłowy kanał.');
+
+  // 2) tytuł
+  await message.channel.send('2) Podaj tytuł embeda:');
+  collected = await message.channel.awaitMessages({ filter, max: 1, time: 60000 }).catch(() => null);
+  if (!collected?.size) return message.channel.send('Czas minął, anulowano.');
+  const title = collected.first().content;
+
+  // 3) treść embeda
+  await message.channel.send('3) Podaj treść embeda:');
+  collected = await message.channel.awaitMessages({ filter, max: 1, time: 60000 }).catch(() => null);
+  if (!collected?.size) return message.channel.send('Czas minął, anulowano.');
+  const embedText = collected.first().content;
+
+  // 4) jednokrotny wybór?
+  await message.channel.send('4) Jednokrotny wybór? (tak/nie)');
+  collected = await message.channel.awaitMessages({ filter, max: 1, time: 60000 }).catch(() => null);
+  if (!collected?.size) return message.channel.send('Czas minął, anulowano.');
+  const singleChoice = collected.first().content.toLowerCase() === 'tak';
+
+  // 5) zbieranie par emoji→rola
+  const pairs = [];
+  await message.channel.send('5) Podaj `:emotka: @rola`. Napisz `koniec`, aby zakończyć.');
+  while (true) {
+    collected = await message.channel.awaitMessages({ filter, max: 1, time: 120000 }).catch(() => null);
+    if (!collected?.size) return message.channel.send('Czas minął, anulowano.');
+    const entry = collected.first().content.trim();
+    if (entry.toLowerCase() === 'koniec') break;
+    const match = entry.match(/(<a?:\w+:(\d+)>|\p{Emoji_Presentation})\s+<@&(\d+)>/u);
+    if (!match) {
+      await message.channel.send('Zły format, podaj `:emotka: @rola`.');
+      continue;
+    }
+    pairs.push({ emoji: match[1], roleId: match[3] });
+    await message.channel.send(`Dodano: ${match[1]} → <@&${match[3]}>`);
+  }
+
+  // 6) tworzymy i wysyłamy embed
+  const rrEmbed = withFooter(new EmbedBuilder()
+    .setTitle(title)
+    .setDescription(embedText)
+    .setColor(0x00AE86)
+  );
+
+  const sent = await target.send({ embeds: [rrEmbed] });
+
+  // Budujemy lokalną mapę emoji→dane
+  const localMap = {};
+  for (const { emoji, roleId } of pairs) {
+    await sent.react(emoji).catch(() => {});
+    const key = emoji.match(/<a?:\w+:(\d+)>/)?.[1] || emoji;
+    localMap[key] = { roleId, singleChoice };
+  }
+
+  // Zapisujemy tę mapę globalnie
+  dynamicReactionRoleMap.set(sent.id, localMap);
+
+  // Tworzymy kolektor tylko na tę wiadomość
+  const collector = sent.createReactionCollector({
+    filter: (reaction, user) => {
+      if (user.bot) return false;
+      const key = reaction.emoji.id || reaction.emoji.toString();
+      return Object.prototype.hasOwnProperty.call(localMap, key);
+    }
+  });
+
+  collector.on('collect', async (reaction, user) => {
+    const key = reaction.emoji.id || reaction.emoji.toString();
+    const data = localMap[key];
+    const member = await sent.guild.members.fetch(user.id).catch(() => null);
+    if (!member) return;
+
+    if (data.singleChoice) {
+      for (const vKey of Object.keys(localMap)) {
+        if (vKey !== key && localMap[vKey].singleChoice && member.roles.cache.has(localMap[vKey].roleId)) {
+          await member.roles.remove(localMap[vKey].roleId).catch(() => {});
         }
+      }
     }
-    // Sprawdzamy, czy wiadomość była wysłana przez tego bota
-    if (reaction.message.author?.id !== client.user.id) return;
-    // Sprawdzamy czy mamy mapowanie dla tej wiadomości
-    const mapEntry = dynamicReactionRoleMap.get(reaction.message.id);
-    if (!mapEntry) return;
-    // Ustalamy klucz emoji, który zapisaliśmy
-    const emojiKey = reaction.emoji.id ? reaction.emoji.id : reaction.emoji.name;
-    const roleId = mapEntry[emojiKey];
-    if (!roleId) return;
-    try {
-        const member = await reaction.message.guild.members.fetch(user.id);
-        await member.roles.add(roleId);
-    } catch (err) {
-        console.error('Nie udało się dodać roli:', err);
+
+    if (!member.roles.cache.has(data.roleId)) {
+      await member.roles.add(data.roleId).catch(() => {});
     }
+  });
+
+  collector.on('remove', async (reaction, user) => {
+    const key = reaction.emoji.id || reaction.emoji.toString();
+    const data = localMap[key];
+    if (!data || data.singleChoice) return;
+    const member = await sent.guild.members.fetch(user.id).catch(() => null);
+    if (!member) return;
+    if (member.roles.cache.has(data.roleId)) {
+      await member.roles.remove(data.roleId).catch(() => {});
+    }
+  });
+
+  await message.channel.send(`✅ Reaction roles utworzone na kanale ${target}`);
 });
 
-// Obsługa usunięcia reakcji – usuwanie roli (opcjonalnie)
-client.on('messageReactionRemove', async (reaction, user) => {
-    if (user.bot) return;
-    if (reaction.partial) {
-        try {
-            await reaction.fetch();
-        } catch (error) {
-            console.error('Błąd przy pobieraniu reakcji:', error);
-            return;
-        }
-    }
-    if (reaction.message.author?.id !== client.user.id) return;
-    const mapEntry = dynamicReactionRoleMap.get(reaction.message.id);
-    if (!mapEntry) return;
-    const emojiKey = reaction.emoji.id ? reaction.emoji.id : reaction.emoji.name;
-    const roleId = mapEntry[emojiKey];
-    if (!roleId) return;
-    try {
-        const member = await reaction.message.guild.members.fetch(user.id);
-        await member.roles.remove(roleId);
-    } catch (err) {
-        console.error('Nie udało się usunąć roli:', err);
-    }
+// TICKET SYSTEM
+client.on('messageCreate', async message => {
+  if (message.author.bot) return;
+  if (message.content.startsWith('$ticket zglos') || message.content.startsWith('$ticket pomoc')) {
+    const isReport = message.content.startsWith('$ticket zglos');
+    const ticketEmbed = withFooter(new EmbedBuilder()
+      .setTitle(isReport ? 'ZGŁOŚ UŻYTKOWNIKA' : 'ZGŁOŚ PROBLEM')
+      .setDescription(isReport 
+        ? 'Kliknij przycisk, aby zgłosić użytkownika.' 
+        : 'Kliknij przycisk, aby zgłosić problem.')
+      .setColor(isReport ? 0xFF0000 : 0x00AE86)
+    );
+
+    const btn = new ButtonBuilder()
+      .setCustomId(isReport ? 'create_ticket_zglos' : 'create_ticket_pomoc')
+      .setLabel(isReport ? '⚠️ Zgłoś użytkownika' : '🔨 Zgłoś problem')
+      .setStyle(isReport ? ButtonStyle.Danger : ButtonStyle.Primary);
+
+    await message.channel.send({
+      embeds: [ticketEmbed],
+      components: [ new ActionRowBuilder().addComponents(btn) ]
+    });
+  }
 });
 
-// Logowanie bota (wstaw swój token)
+client.on('interactionCreate', async interaction => {
+  if (!interaction.isButton()) return;
+  if (interaction.customId === 'create_ticket_zglos' || interaction.customId === 'create_ticket_pomoc') {
+    const isReport = interaction.customId === 'create_ticket_zglos';
+    const channelName = `${isReport ? 'zglos' : 'pomoc'}-${interaction.user.username}`;
+    try {
+      const ticketCh = await interaction.guild.channels.create({
+        name: channelName,
+        type: ChannelType.GuildText,
+        parent: TICKET_CATEGORY_OPEN,
+        permissionOverwrites: [
+          { id: interaction.guild.id,        deny: [PermissionsBitField.Flags.ViewChannel] },
+          { id: interaction.user.id,         allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
+          { id: ADMIN_ROLE_ID,               allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
+        ]
+      });
+      await ticketCh.send(`<@${interaction.user.id}>`);
+      const followupEmbed = withFooter(new EmbedBuilder()
+        .setTitle(isReport ? 'ZGŁOŚ UŻYTKOWNIKA' : 'ZGŁOŚ PROBLEM')
+        .setDescription(isReport ? 'Opisz użytkownika i powód.' : 'Opisz swój problem.')
+        .setColor(isReport ? 0xFF0000 : 0x00AE86)
+      );
+      const closeBtn = new ButtonBuilder()
+        .setCustomId('close_ticket')
+        .setLabel('Zamknij Ticket')
+        .setStyle(ButtonStyle.Danger);
+      await ticketCh.send({
+        embeds: [followupEmbed],
+        components: [ new ActionRowBuilder().addComponents(closeBtn) ]
+      });
+      await interaction.reply({ content: `Ticket utworzony: ${ticketCh}`, ephemeral: true });
+    } catch (err) {
+      console.error('Błąd tworzenia ticketu:', err);
+      await interaction.reply({ content: 'Błąd tworzenia ticketa.', ephemeral: true });
+    }
+  }
+  if (interaction.customId === 'close_ticket') {
+    if (!interaction.member.roles.cache.has(ADMIN_ROLE_ID)) {
+      return interaction.reply({ content: 'Brak uprawnień.', ephemeral: true });
+    }
+    await interaction.channel.setParent(TICKET_CATEGORY_CLOSED);
+    await interaction.channel.permissionOverwrites.edit(interaction.user.id, { ViewChannel: false });
+    await interaction.reply('Ticket zamknięty.');
+  }
+});
+
 client.login(process.env.TOKEN);
