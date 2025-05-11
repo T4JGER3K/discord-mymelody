@@ -8,8 +8,7 @@ const {
   ButtonBuilder, 
   ActionRowBuilder, 
   ButtonStyle,
-  Partials,
-  MessageFlags
+  Partials
 } = require('discord.js');
 
 const client = new Client({
@@ -20,7 +19,11 @@ const client = new Client({
     GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.GuildMembers
   ],
-  partials: [Partials.Message, Partials.Channel, Partials.Reaction]
+  partials: [
+    Partials.Message,
+    Partials.Channel,
+    Partials.Reaction
+  ]
 });
 
 // PODMIEŃ NA SWOJE ID
@@ -221,19 +224,39 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-// HANDLER REAKCJI
+// POPRAWIONY HANDLER REAKCJI
 client.on('messageReactionAdd', async (reaction, user) => {
-  // nie reagujemy na bota ani niepełne (partial) reakcje
   if (user.bot) return;
+
+  // fetch reaction if partial
   if (reaction.partial) {
-    try { await reaction.fetch(); } catch { return; }
+    try {
+      await reaction.fetch();
+    } catch {
+      return;
+    }
   }
 
-  // **NOWE**: tylko reakcje pod WIADOMOŚCIĄ BOTA
-  if (!reaction.message.author || reaction.message.author.id !== client.user.id) return;
+  // fetch message if partial
+  if (reaction.message.partial) {
+    try {
+      await reaction.message.fetch();
+    } catch {
+      return;
+    }
+  }
 
-  // **NOWE**: tylko jeśli tę wiadomość mamy w naszej mapie reaction-role
-  if (!dynamicReactionRoleMap.has(reaction.message.id)) return;
+  // tylko pod wiadomościami bota
+  if (!reaction.message.author || reaction.message.author.id !== client.user.id) {
+    console.log(`IGNORUJĘ reakcję na message.id=${reaction.message.id} od author=${reaction.message.author?.id}`);
+    return;
+  }
+
+  // tylko jeśli jest w naszej mapie
+  if (!dynamicReactionRoleMap.has(reaction.message.id)) {
+    console.log(`IGNORUJĘ message.id=${reaction.message.id}, bo nie ma w dynamicReactionRoleMap`);
+    return;
+  }
 
   const map = dynamicReactionRoleMap.get(reaction.message.id);
   const key = reaction.emoji.id || reaction.emoji.toString();
@@ -243,7 +266,6 @@ client.on('messageReactionAdd', async (reaction, user) => {
   const member = await reaction.message.guild.members.fetch(user.id).catch(() => null);
   if (!member) return;
 
-  // jednokrotny wybór: usuwamy inne role
   if (data.singleChoice) {
     for (const v of Object.values(map)) {
       if (v.singleChoice && v.roleId !== data.roleId && member.roles.cache.has(v.roleId)) {
@@ -252,7 +274,6 @@ client.on('messageReactionAdd', async (reaction, user) => {
     }
   }
 
-  // dodajemy rolę jeśli jej jeszcze nie ma
   if (!member.roles.cache.has(data.roleId)) {
     await member.roles.add(data.roleId).catch(() => {});
   }
