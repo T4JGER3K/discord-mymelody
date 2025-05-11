@@ -22,17 +22,17 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
 
-// Twoje ID
+// Ustaw swoje ID:
 const TICKET_CATEGORY_OPEN   = '1350857928583807039';
 const TICKET_CATEGORY_CLOSED = '1350857964675661885';
 const ADMIN_ROLE_ID          = '1350176648368230601';
 const WELCOME_CHANNEL_ID     = '1348705958939066393';
 const REGULAMIN_CHANNEL_ID   = '1348705958939066396';
 
-// mapa messageId → { emojiKey → { roleId, singleChoice } }
+// mapa: messageId → { emojiKey → { roleId, singleChoice } }
 const dynamicReactionRoleMap = new Map();
 
-// helper do embeda z footerem
+// helper: dodaje stopkę © tajgerek
 function withFooter(embed) {
   return embed.setFooter({ text: '© tajgerek' });
 }
@@ -45,7 +45,6 @@ client.once('ready', () => {
   });
 });
 
-// POWITANIE
 client.on('guildMemberAdd', async member => {
   try {
     const ch = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
@@ -81,7 +80,7 @@ client.on('guildMemberAdd', async member => {
 client.on('messageCreate', async message => {
   if (message.author.bot) return;
 
-  // === REACTION ROLES ===
+  // === !reaction roles ===
   if (message.content === '!reaction roles') {
     if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
       return message.channel.send('Tylko administratorzy mogą tworzyć reaction roles.');
@@ -94,7 +93,7 @@ client.on('messageCreate', async message => {
       return collected?.first()?.content;
     };
 
-    // 1) kanał
+    // 1) wybór kanału
     await message.channel.send('Wskaż kanał (wspomnij):');
     const target = message.mentions.channels.first();
     if (!target) return message.channel.send('Nieprawidłowy kanał.');
@@ -107,7 +106,7 @@ client.on('messageCreate', async message => {
     const embedText = await ask('Podaj treść embeda:');
     if (!embedText) return message.channel.send('Brak treści, anulowano.');
 
-    // 4) singleChoice?
+    // 4) jednokrotny wybór?
     const singleAns = await ask('Jednokrotny wybór? (tak/nie)');
     if (!singleAns) return message.channel.send('Brak odpowiedzi, anulowano.');
     const singleChoice = singleAns.toLowerCase() === 'tak';
@@ -132,14 +131,14 @@ client.on('messageCreate', async message => {
     const color = await ask('Podaj hex koloru (np. #FF0000):');
     if (!color) return message.channel.send('Brak koloru, anulowano.');
 
-    // stwórz embed
+    // Tworzymy embed
     const rrEmbed = withFooter(new EmbedBuilder()
       .setColor(color)
       .setTitle(title)
       .setDescription(embedText)
     );
 
-    // wyślij i zarejestruj mapę
+    // Wysyłamy i rejestrujemy mapę
     const sent = await target.send({ embeds: [rrEmbed] });
     dynamicReactionRoleMap.set(sent.id, {});
     for (const { emoji, roleId } of pairs) {
@@ -151,7 +150,7 @@ client.on('messageCreate', async message => {
     return;
   }
 
-  // === TICKETY ===
+  // === ticket system ===
   if (message.content.startsWith('$ticket zglos') || message.content.startsWith('$ticket pomoc')) {
     const isReport = message.content.startsWith('$ticket zglos');
     const embed = withFooter(new EmbedBuilder()
@@ -173,7 +172,6 @@ client.on('messageCreate', async message => {
   }
 });
 
-// === INTERACTIONS ===
 client.on('interactionCreate', async interaction => {
   if (!interaction.isButton()) return;
 
@@ -210,7 +208,6 @@ client.on('interactionCreate', async interaction => {
         embeds: [ticketEmbed],
         components: [ new ActionRowBuilder().addComponents(closeBtn) ]
       });
-
       await interaction.reply({ content: `Ticket utworzony: ${ticketCh}`, ephemeral: true });
     } catch (err) {
       console.error('Błąd tworzenia ticketu:', err);
@@ -230,7 +227,7 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-// === HANDLER REACTION ROLES ===
+// handler reakcji
 client.on('messageReactionAdd', async (reaction, user) => {
   if (user.bot) return;
   if (reaction.partial) {
@@ -238,15 +235,11 @@ client.on('messageReactionAdd', async (reaction, user) => {
     catch { return; }
   }
 
-  const msgId = reaction.message.id;
-  console.log('Reaction on', msgId, 'registered embeds:', [...dynamicReactionRoleMap.keys()]);
+  // ignoruj wszystko poza wiadomościami wysłanymi przez bota
+  if (reaction.message.author.id !== client.user.id) return;
 
-  // ignoruj, jeśli to nie nasz embed
-  if (!dynamicReactionRoleMap.has(msgId)) {
-    console.log('→ ignoruję reakcję na cudzej wiadomości');
-    return;
-  }
-  console.log('→ przetwarzam reakcję pod embeddem');
+  const msgId = reaction.message.id;
+  if (!dynamicReactionRoleMap.has(msgId)) return;
 
   const key = reaction.emoji.id || reaction.emoji.toString();
   const data = dynamicReactionRoleMap.get(msgId)[key];
@@ -255,7 +248,6 @@ client.on('messageReactionAdd', async (reaction, user) => {
   const member = await reaction.message.guild.members.fetch(user.id);
 
   if (data.singleChoice) {
-    // usuń inne single-choice role
     for (const v of Object.values(dynamicReactionRoleMap.get(msgId))) {
       if (v.singleChoice && v.roleId !== data.roleId && member.roles.cache.has(v.roleId)) {
         await member.roles.remove(v.roleId).catch(() => {});
@@ -263,7 +255,6 @@ client.on('messageReactionAdd', async (reaction, user) => {
     }
   }
 
-  // dodaj rolę
   if (!member.roles.cache.has(data.roleId)) {
     await member.roles.add(data.roleId).catch(() => {});
   }
