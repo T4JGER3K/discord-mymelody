@@ -92,28 +92,32 @@ client.on('messageCreate', async message => {
   const ask = async prompt => {
     await message.channel.send(prompt);
     const collected = await message.channel.awaitMessages({ filter, max: 1, time: 60000 }).catch(() => null);
-    return collected?.first()?.content;
+    return collected?.first();
   };
 
   // 1) kanał
-  await message.channel.send('Wskaż kanał (wspomnij):');
-  const target = message.mentions.channels.first();
+  const channelMsg = await ask('Wskaż kanał (w formie #nazwa):');
+  if (!channelMsg) return message.channel.send('Czas minął, anulowano.');
+  const target = channelMsg.mentions.channels.first();
   if (!target) return message.channel.send('Nieprawidłowy kanał.');
 
   // 2) tytuł
-  const title = await ask('Podaj tytuł embeda:');
-  if (!title) return message.channel.send('Brak tytułu, anulowano.');
+  const titleMsg = await ask('Podaj tytuł embeda:');
+  if (!titleMsg) return message.channel.send('Czas minął, anulowano.');
+  const title = titleMsg.content;
 
   // 3) treść
-  const embedText = await ask('Podaj treść embeda:');
-  if (!embedText) return message.channel.send('Brak treści, anulowano.');
+  const contentMsg = await ask('Podaj treść embeda:');
+  if (!contentMsg) return message.channel.send('Czas minął, anulowano.');
+  const embedText = contentMsg.content;
 
   // 4) pary emoji→rola (można wiele)
   const pairs = [];
   await message.channel.send('Podaj `:emotka: @rola`. Napisz `koniec`, aby zakończyć.');
   while (true) {
-    const entry = await ask('');
-    if (!entry) return message.channel.send('Czas minął, anulowano.');
+    const entryMsg = await ask('');
+    if (!entryMsg) return message.channel.send('Czas minął, anulowano.');
+    const entry = entryMsg.content.trim();
     if (entry.toLowerCase() === 'koniec') break;
     const match = entry.match(/(<a?:\w+:(\d+)>|\p{Emoji_Presentation})\s+<@&(\d+)>/u);
     if (!match) {
@@ -233,7 +237,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
     catch { return; }
   }
 
-  // ignoruj, jeśli autor wiadomości != bot
+  // ignoruj, jeśli autor wiadomości ≠ bot
   if (reaction.message.author.id !== client.user.id) return;
 
   const msgId = reaction.message.id;
@@ -246,7 +250,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
   const member = await reaction.message.guild.members.fetch(user.id);
   if (!member) return;
 
-  // przypisz rolę (nie usuwamy innych, bo singleChoice=false)
+  // przypisz rolę
   if (!member.roles.cache.has(data.roleId)) {
     await member.roles.add(data.roleId).catch(() => {});
   }
