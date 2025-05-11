@@ -50,40 +50,38 @@ client.on('guildMemberAdd', member => {
 });
 
 // ------- KOMENDY TEKSTOWE ($ticket) -------
-client.on('messageCreate', message => {
-  if (message.author.bot) return;
+client.on('guildMemberAdd', async member => {
+  try {
+    const ch = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
+    if (!ch?.isTextBased()) return;
 
-  if (message.content === '$ticket zglos') {
-    const embed = new EmbedBuilder()
-      .setTitle('ZGŁOŚ UŻYTKOWNIKA')
-      .setDescription('Jeśli uważasz, że użytkownik łamie regulamin, możesz go zgłosić klikając poniższy przycisk.')
-      .setColor('Red');
-    withFooter(embed);
+    const welcomeEmbed = withFooter(new EmbedBuilder()
+      .setTitle('🎉 Witamy na serwerze! 🎉')
+      .setDescription(
+        `Witaj <@${member.id}>!\n\n` +
+        `Cieszymy się, że dołączyłeś do naszej społeczności. ` +
+        `Zapoznaj się z regulaminem, aby w pełni korzystać z serwera.`
+      )
+      .addFields(
+        { name: 'Nazwa użytkownika',    value: member.user.username, inline: true },
+        { name: 'Data utworzenia konta', value: `<t:${Math.floor(member.user.createdTimestamp/1000)}:R>`, inline: true }
+      )
+      .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+      .setColor(0x00AE86)
+      .setTimestamp()
+    );
 
-    const reportUserButton = new ButtonBuilder()
-      .setCustomId('report_user')
-      .setLabel('⚠️ zgłoś użytkownika')
-      .setStyle(ButtonStyle.Danger);
-    const row = new ActionRowBuilder().addComponents(reportUserButton);
+    const regBtn = new ButtonBuilder()
+      .setStyle(ButtonStyle.Link)
+      .setLabel('📜 Regulamin')
+      .setURL(`https://discord.com/channels/${member.guild.id}/${REGULAMIN_CHANNEL_ID}`);
 
-    message.channel.send({ embeds: [embed], components: [row] });
-  }
-  else if (message.content === '$ticket pomoc') {
-    const embed = new EmbedBuilder()
-      .setTitle('ZGŁOŚ PROBLEM')
-      .setDescription('Jeśli chcesz zgłosić problem dotyczący działania serwera, kliknij poniższy przycisk.')
-      .setColor('Green');
-    withFooter(embed);
-
-    const reportIssueButton = new ButtonBuilder()
-      .setCustomId('report_problem')
-      .setLabel('🔨 zgłoś problem')
-      .setStyle(ButtonStyle.Primary);
-    const row = new ActionRowBuilder().addComponents(reportIssueButton);
-
-    message.channel.send({ embeds: [embed], components: [row] });
+    await ch.send({ embeds: [welcomeEmbed], components: [ new ActionRowBuilder().addComponents(regBtn) ] });
+  } catch (err) {
+    console.error("Błąd powitania:", err);
   }
 });
+
 
 // ------- OBSŁUGA BUTTONÓW (TICKETY) -------
 client.on('interactionCreate', async interaction => {
