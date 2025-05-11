@@ -180,4 +180,4 @@ client.on('messageReactionRemove', async (reaction, user) => {
 });
 
 // Logowanie bota (wstaw swój token)
-client.login('TWÓJ_TOKEN_DO_BOTA');
+client.login(process.env.TOKEN);
