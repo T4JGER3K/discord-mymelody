@@ -23,14 +23,14 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
 
-// PODMIEN NA SWOJE ID
+// PODMIEŃ NA SWOJE ID
 const TICKET_CATEGORY_OPEN   = '1350857928583807039';
 const TICKET_CATEGORY_CLOSED = '1350857964675661885';
 const ADMIN_ROLE_ID          = '1350176648368230601';
 const WELCOME_CHANNEL_ID     = '1348705958939066393';
 const REGULAMIN_CHANNEL_ID   = '1348705958939066396';
 
-// mapa: messageId → { emojiKey: { roleId, singleChoice } }
+// mapa: messageId → { emojiKey: { roleId, singleChoice:false } }
 const dynamicReactionRoleMap = new Map();
 
 // helper: dodaje stopkę © tajgerek
@@ -46,7 +46,7 @@ client.once('ready', () => {
   });
 });
 
-// POWITANIE
+// POWITANIE NOWYCH UŻYTKOWNIKÓW
 client.on('guildMemberAdd', async member => {
   try {
     const ch = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
@@ -56,7 +56,8 @@ client.on('guildMemberAdd', async member => {
       .setTitle('🎉 Witamy na serwerze! 🎉')
       .setDescription(
         `Witaj <@${member.id}>!\n\n` +
-        `Cieszymy się, że dołączyłeś do naszej społeczności. Zapoznaj się z regulaminem, aby w pełni korzystać z serwera.`
+        `Cieszymy się, że dołączyłeś do naszej społeczności. ` +
+        `Zapoznaj się z regulaminem, aby w pełni korzystać z serwera.`
       )
       .addFields(
         { name: 'Nazwa użytkownika',    value: member.user.username, inline: true },
@@ -78,13 +79,13 @@ client.on('guildMemberAdd', async member => {
   }
 });
 
-// KOMENDA !reaction roles
+// KOMENDA $rr – tworzenie reaction-roles
 client.on('messageCreate', async message => {
   if (message.author.bot) return;
-  if (message.content !== '!reaction roles') return;
+  if (message.content !== '$rr') return;
 
   if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-    return message.channel.send('Tylko administratorzy mogą tworzyć reaction roles.');
+    return message.channel.send('Tylko administratorzy mogą używać tej komendy.');
   }
 
   const filter = m => m.author.id === message.author.id;
@@ -95,7 +96,7 @@ client.on('messageCreate', async message => {
   };
 
   // 1) kanał
-  await message.channel.send('Wskaż kanał (oznacz):');
+  await message.channel.send('Wskaż kanał (wspomnij):');
   const target = message.mentions.channels.first();
   if (!target) return message.channel.send('Nieprawidłowy kanał.');
 
@@ -103,23 +104,17 @@ client.on('messageCreate', async message => {
   const title = await ask('Podaj tytuł embeda:');
   if (!title) return message.channel.send('Brak tytułu, anulowano.');
 
-  // 3) opis
+  // 3) treść
   const embedText = await ask('Podaj treść embeda:');
   if (!embedText) return message.channel.send('Brak treści, anulowano.');
 
-  // 4) singleChoice?
-  const singleAns = await ask('Jednokrotny wybór? (tak/nie)');
-  if (!singleAns) return message.channel.send('Brak odpowiedzi, anulowano.');
-  const singleChoice = singleAns.toLowerCase() === 'tak';
-
-  // 5) emoji→rola
+  // 4) pary emoji→rola (można wiele)
   const pairs = [];
-  await message.channel.send('Podaj `:emotka: @rola`. Napisz `koniec`, gdy skończysz.');
+  await message.channel.send('Podaj `:emotka: @rola`. Napisz `koniec`, aby zakończyć.');
   while (true) {
     const entry = await ask('');
     if (!entry) return message.channel.send('Czas minął, anulowano.');
     if (entry.toLowerCase() === 'koniec') break;
-
     const match = entry.match(/(<a?:\w+:(\d+)>|\p{Emoji_Presentation})\s+<@&(\d+)>/u);
     if (!match) {
       await message.channel.send('Zły format, podaj `:emotka: @rola`.');
@@ -128,25 +123,23 @@ client.on('messageCreate', async message => {
     pairs.push({ emoji: match[1], roleId: match[3] });
   }
 
-  // 6) kolor
-  const color = await ask('Podaj hex koloru (np. #FF0000):');
-  if (!color) return message.channel.send('Brak koloru, anulowano.');
-
-  // tworzymy embed
+  // Stworzenie embeda
   const rrEmbed = withFooter(new EmbedBuilder()
-    .setColor(color)
     .setTitle(title)
     .setDescription(embedText)
+    .setColor(0x00AE86)
   );
 
-  // wysyłamy i rejestrujemy
+  // Wysłanie i rejestracja reakcji
   const sent = await target.send({ embeds: [rrEmbed] });
   dynamicReactionRoleMap.set(sent.id, {});
   for (const { emoji, roleId } of pairs) {
     await sent.react(emoji).catch(() => {});
     const key = emoji.match(/<a?:\w+:(\d+)>/)?.[1] || emoji;
-    dynamicReactionRoleMap.get(sent.id)[key] = { roleId, singleChoice };
+    dynamicReactionRoleMap.get(sent.id)[key] = { roleId, singleChoice: false };
   }
+
+  message.channel.send('Reaction roles utworzone!');
 });
 
 // TICKET SYSTEM – wysłanie embedów z przyciskami
@@ -165,28 +158,28 @@ client.on('messageCreate', async message => {
 
     const btn = new ButtonBuilder()
       .setCustomId(isReport ? 'create_ticket_zglos' : 'create_ticket_pomoc')
-      .setLabel(isReport ? '⚠️ zgłoś użytkownika' : '🔨 zgłoś problem')
+      .setLabel(isReport ? '⚠️ Zgłoś użytkownika' : '🔨 Zgłoś problem')
       .setStyle(isReport ? ButtonStyle.Danger : ButtonStyle.Primary);
 
-    return message.channel.send({
+    await message.channel.send({
       embeds: [ticketEmbed],
       components: [ new ActionRowBuilder().addComponents(btn) ]
     });
   }
 });
 
-// OBSŁUGA PRZEŁĄCZANIA TICKETÓW
+// OBSŁUGA INTERAKCJI PRZYCISKÓW TICKET
 client.on('interactionCreate', async interaction => {
   if (!interaction.isButton()) return;
 
-  // tworzenie kanału ticketowego
+  // CREATE TICKET
   if (interaction.customId === 'create_ticket_zglos' || interaction.customId === 'create_ticket_pomoc') {
     const isReport = interaction.customId === 'create_ticket_zglos';
-    const name = `${isReport ? 'zglos' : 'pomoc'}-${interaction.user.username}`;
+    const channelName = `${isReport ? 'zglos' : 'pomoc'}-${interaction.user.username}`;
 
     try {
       const ticketCh = await interaction.guild.channels.create({
-        name,
+        name: channelName,
         type: ChannelType.GuildText,
         parent: TICKET_CATEGORY_OPEN,
         permissionOverwrites: [
@@ -198,7 +191,7 @@ client.on('interactionCreate', async interaction => {
 
       await ticketCh.send(`<@${interaction.user.id}>`);
 
-      const logEmbed = withFooter(new EmbedBuilder()
+      const followupEmbed = withFooter(new EmbedBuilder()
         .setTitle(isReport ? 'ZGŁOŚ UŻYTKOWNIKA' : 'ZGŁOŚ PROBLEM')
         .setDescription(isReport ? 'Opisz użytkownika i powód.' : 'Opisz swój problem.')
         .setColor(isReport ? 0xFF0000 : 0x00AE86)
@@ -209,30 +202,30 @@ client.on('interactionCreate', async interaction => {
         .setStyle(ButtonStyle.Danger);
 
       await ticketCh.send({
-        embeds: [logEmbed],
+        embeds: [followupEmbed],
         components: [ new ActionRowBuilder().addComponents(closeBtn) ]
       });
 
       await interaction.reply({ content: `Ticket utworzony: ${ticketCh}`, ephemeral: true });
     } catch (err) {
-      console.error('Błąd tworzenia ticketa:', err);
+      console.error('Błąd tworzenia ticketu:', err);
       await interaction.reply({ content: 'Błąd tworzenia ticketa.', ephemeral: true });
     }
     return;
   }
 
-  // zamknięcie ticketu
+  // CLOSE TICKET
   if (interaction.customId === 'close_ticket') {
     if (!interaction.member.roles.cache.has(ADMIN_ROLE_ID)) {
       return interaction.reply({ content: 'Brak uprawnień.', ephemeral: true });
     }
     await interaction.channel.setParent(TICKET_CATEGORY_CLOSED);
     await interaction.channel.permissionOverwrites.edit(interaction.user.id, { ViewChannel: false });
-    return interaction.reply('Ticket zamknięty.');
+    await interaction.reply('Ticket zamknięty.');
   }
 });
 
-// HANDLER REAKCJI
+// HANDLER REAKCJI — tylko pod botowymi wiadomościami
 client.on('messageReactionAdd', async (reaction, user) => {
   if (user.bot) return;
   if (reaction.partial) {
@@ -240,7 +233,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
     catch { return; }
   }
 
-  // IGNORUJ reakcje pod cudzymi wiadomościami
+  // ignoruj, jeśli autor wiadomości != bot
   if (reaction.message.author.id !== client.user.id) return;
 
   const msgId = reaction.message.id;
@@ -251,15 +244,9 @@ client.on('messageReactionAdd', async (reaction, user) => {
   if (!data) return;
 
   const member = await reaction.message.guild.members.fetch(user.id);
+  if (!member) return;
 
-  if (data.singleChoice) {
-    for (const v of Object.values(dynamicReactionRoleMap.get(msgId))) {
-      if (v.singleChoice && v.roleId !== data.roleId && member.roles.cache.has(v.roleId)) {
-        await member.roles.remove(v.roleId).catch(() => {});
-      }
-    }
-  }
-
+  // przypisz rolę (nie usuwamy innych, bo singleChoice=false)
   if (!member.roles.cache.has(data.roleId)) {
     await member.roles.add(data.roleId).catch(() => {});
   }
