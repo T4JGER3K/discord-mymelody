@@ -13,20 +13,20 @@ const {
 } = require('discord.js');
 
 // Kategorie – ustaw odpowiednie ID kategorii
-const TICKET_CATEGORY_OPEN = '1350857928583807039';
-const TICKET_CATEGORY_CLOSED = '1350857964675661885';
+const TICKET_CATEGORY_OPEN    = '1350857928583807039';
+const TICKET_CATEGORY_CLOSED  = '1350857964675661885';
 
 // ID roli administracji
-const ADMIN_ROLE_ID = '1350176648368230601';
+const ADMIN_ROLE_ID           = '1350176648368230601';
 
 // ID kanału powitalnego i regulaminu
-const WELCOME_CHANNEL_ID = '1348705958939066393';
-const REGULAMIN_CHANNEL_ID = '1348705958939066396';
+const WELCOME_CHANNEL_ID      = '1348705958939066393';
+const REGULAMIN_CHANNEL_ID    = '1348705958939066396';
 
 const client = new Client({
     intents: [
-        GatewayIntentBits.Guilds, 
-        GatewayIntentBits.GuildMessages, 
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMessageReactions,
         GatewayIntentBits.GuildMembers
@@ -34,7 +34,8 @@ const client = new Client({
     partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
 
-let dynamicReactionRoleMap = {};
+// map: messageId → { emojiKey → { roleId, singleChoice } }
+const dynamicReactionRoleMap = new Map();
 
 client.once('ready', () => {
     console.log(`Zalogowano jako ${client.user.tag}`);
@@ -44,190 +45,212 @@ client.once('ready', () => {
     });
 });
 
+// helper: dodaje stopkę do embeda
+function withFooter(embed) {
+    return embed.setFooter({ text: '© tajgerek' });
+}
+
 client.on('guildMemberAdd', async member => {
     try {
-        const welcomeChannel = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
-        if (welcomeChannel?.isTextBased()) {
-            const welcomeEmbed = new EmbedBuilder()
+        const ch = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
+        if (!ch?.isTextBased()) return;
+
+        const welcomeEmbed = withFooter(
+            new EmbedBuilder()
                 .setTitle('🎉 Witamy na serwerze! 🎉')
-                .setDescription(`Witaj <@${member.id}>!\n\nCieszymy się, że dołączyłeś do naszej społeczności. Mamy nadzieję, że znajdziesz tu przyjazne środowisko oraz wiele ciekawych rozmów i aktywności. Zapoznaj się z regulaminem i zasadami serwera, aby w pełni korzystać z dostępnych możliwości. Jeszcze raz – witamy serdecznie!`)
+                .setDescription(`Witaj <@${member.id}>!\n\nCieszymy się, że dołączyłeś do naszej społeczności. Zapoznaj się z regulaminem, aby w pełni korzystać z serwera.`)
                 .addFields(
-                    { name: 'Nazwa użytkownika', value: member.user.username, inline: true },
+                    { name: 'Nazwa użytkownika',    value: member.user.username, inline: true },
                     { name: 'Data utworzenia konta', value: `<t:${Math.floor(member.user.createdTimestamp/1000)}:R>`, inline: true }
                 )
                 .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
                 .setColor(0x00AE86)
                 .setTimestamp()
-                .setFooter({ text: '© tajgerek' });
+        );
 
-            const regulaminButton = new ButtonBuilder()
-                .setStyle(ButtonStyle.Link)
-                .setLabel('📜 regulamin')
-                .setURL(`https://discord.com/channels/${member.guild.id}/${REGULAMIN_CHANNEL_ID}`);
+        const regulaminButton = new ButtonBuilder()
+            .setStyle(ButtonStyle.Link)
+            .setLabel('📜 Regulamin')
+            .setURL(`https://discord.com/channels/${member.guild.id}/${REGULAMIN_CHANNEL_ID}`);
 
-            const row = new ActionRowBuilder().addComponents(regulaminButton);
-            await welcomeChannel.send({ embeds: [welcomeEmbed], components: [row] });
-        }
-    } catch (error) {
-        console.error("Błąd przy wysyłaniu wiadomości powitalnej:", error);
+        await ch.send({ embeds: [welcomeEmbed], components: [ new ActionRowBuilder().addComponents(regulaminButton) ] });
+    } catch (err) {
+        console.error("Błąd w guildMemberAdd:", err);
     }
 });
 
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
-    const { content, member, channel, guild } = message;
 
-    if (content === '!reaction roles') {
-        if (!member.permissions.has(PermissionsBitField.Flags.Administrator))
-            return channel.send('Tylko administratorzy mogą tworzyć reaction roles.');
+    // ===== REACTION ROLES =====
+    if (message.content === '!reaction roles') {
+        if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+            return message.channel.send('Tylko administratorzy mogą tworzyć reaction roles.');
+        }
+
         const filter = m => m.author.id === message.author.id;
+        const ask = async prompt => {
+            await message.channel.send(prompt);
+            const collected = await message.channel.awaitMessages({ filter, max: 1, time: 60000 }).catch(() => null);
+            return collected?.first()?.content;
+        };
 
-        await channel.send('Wskaż kanał do wysłania embeda (wspomnij kanał).');
-        let collected = await channel.awaitMessages({ filter, max: 1, time: 60000 }).catch(() => null);
-        if (!collected) return channel.send('Czas minął, anulowano.');
-        const target = collected.first().mentions.channels.first();
-        if (!target) return channel.send('Nieprawidłowy kanał.');
+        // 1) wybór kanału
+        await message.channel.send('Wskaż kanał do wysłania embeda (wspomnij kanał).');
+        const target = message.mentions.channels.first();
+        if (!target) return message.channel.send('Nieprawidłowy kanał.');
 
-        await channel.send('Podaj tytuł embeda:');
-        collected = await channel.awaitMessages({ filter, max: 1, time: 60000 }).catch(() => null);
-        if (!collected) return channel.send('Brak tytułu, anulowano.');
-        const title = collected.first().content.trim();
+        // 2) tytuł
+        const title     = await ask('Podaj tytuł embeda:');
+        if (!title) return message.channel.send('Brak tytułu, anulowano.');
 
-        await channel.send('Podaj treść embeda:');
-        collected = await channel.awaitMessages({ filter, max: 1, time: 60000 }).catch(() => null);
-        if (!collected) return channel.send('Brak treści, anulowano.');
-        const embedText = collected.first().content;
+        // 3) treść
+        const embedText = await ask('Podaj treść embeda:');
+        if (!embedText) return message.channel.send('Brak treści, anulowano.');
 
-        await channel.send('Czy to będzie wybór jednokrotnego wyboru (tak/nie)?');
-        collected = await channel.awaitMessages({ filter, max: 1, time: 60000 }).catch(() => null);
-        if (!collected) return channel.send('Brak odpowiedzi, anulowano.');
-        const singleChoice = collected.first().content.toLowerCase() === 'tak';
+        // 4) single choice?
+        const singleAns = await ask('Czy to będzie wybór jednokrotnego wyboru (tak/nie)?');
+        if (!singleAns) return message.channel.send('Brak odpowiedzi, anulowano.');
+        const singleChoice = singleAns.toLowerCase() === 'tak';
 
+        // 5) pary emoji → rola
         const pairs = [];
-        await channel.send('Podaj parę `:emotka: @rola`. Napisz `koniec` aby zakończyć.');
+        await message.channel.send('Podaj parę `:emotka: @rola`. Napisz `koniec` aby zakończyć.');
         while (true) {
-            collected = await channel.awaitMessages({ filter, max: 1, time: 120000 }).catch(() => null);
-            if (!collected) return channel.send('Czas minął, anulowano.');
-            const entry = collected.first().content.trim();
+            const entry = await ask('');
+            if (!entry) return message.channel.send('Czas minął, anulowano.');
             if (entry.toLowerCase() === 'koniec') break;
+
             const match = entry.match(/(<a?:\w+:(\d+)>|\p{Emoji_Presentation})\s+<@&(\d+)>/u);
-            if (!match) { await channel.send('Zły format, podaj `:emotka: @rola`.'); continue; }
+            if (!match) {
+                await message.channel.send('Zły format, podaj `:emotka: @rola`.');
+                continue;
+            }
             pairs.push({ emoji: match[1], roleId: match[3] });
         }
 
-        await channel.send('Podaj kod koloru hex (np. #FF0000):');
-        collected = await channel.awaitMessages({ filter, max: 1, time: 60000 }).catch(() => null);
-        if (!collected) return channel.send('Brak koloru, anulowano.');
-        const color = collected.first().content.trim();
+        // 6) kolor
+        const color = await ask('Podaj kod koloru hex (np. #FF0000):');
+        if (!color) return message.channel.send('Brak koloru, anulowano.');
 
-        const rrEmbed = new EmbedBuilder()
-            .setColor(color)
-            .setTitle(title)
-            .setDescription(embedText);
+        // Stworzenie embeda
+        const rrEmbed = withFooter(
+            new EmbedBuilder()
+                .setColor(color)
+                .setTitle(title)
+                .setDescription(embedText)
+        );
 
+        // Wysłanie i reakcje
         const sent = await target.send({ embeds: [rrEmbed] });
+        dynamicReactionRoleMap.set(sent.id, {});
         for (const { emoji, roleId } of pairs) {
             await sent.react(emoji).catch(() => {});
-            const idMatch = emoji.match(/<a?:\w+:(\d+)>/);
-            if (idMatch) dynamicReactionRoleMap[idMatch[1]] = { roleId, singleChoice };
-            else dynamicReactionRoleMap[emoji] = { roleId, singleChoice };
+            const key = emoji.match(/<a?:\w+:(\d+)>/)?.[1] || emoji;
+            dynamicReactionRoleMap.get(sent.id)[key] = { roleId, singleChoice };
         }
+
         return;
     }
 
-    if (content.startsWith('$ticket zglos')) {
-        const embed = new EmbedBuilder()
-            .setTitle("ZGŁOŚ UŻYTKOWNIKA")
-            .setDescription("Kliknij przycisk, aby zgłosić użytkownika.")
-            .setColor(0xFF0000)
-            .setFooter({ text: '© tajgerek' });
+    // ===== TICKETY =====
+    if (message.content.startsWith('$ticket zglos') || message.content.startsWith('$ticket pomoc')) {
+        const isReport = message.content.startsWith('$ticket zglos');
+        const embed = withFooter(
+            new EmbedBuilder()
+                .setTitle(isReport ? 'ZGŁOŚ UŻYTKOWNIKA' : 'ZGŁOŚ PROBLEM')
+                .setDescription(isReport ? 'Kliknij przycisk, aby zgłosić użytkownika.' : 'Kliknij przycisk, aby zgłosić problem.')
+                .setColor(isReport ? 0xFF0000 : 0x00AE86)
+        );
         const button = new ButtonBuilder()
-            .setCustomId('create_ticket_zglos')
-            .setLabel('⚠️ zgłoś użytkownika')
-            .setStyle(ButtonStyle.Danger);
-        await channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(button)] });
-        return;
-    }
+            .setCustomId(isReport ? 'create_ticket_zglos' : 'create_ticket_pomoc')
+            .setLabel(isReport ? '⚠️ zgłoś użytkownika' : '🔨 zgłoś problem')
+            .setStyle(isReport ? ButtonStyle.Danger : ButtonStyle.Primary);
 
-    if (content.startsWith('$ticket pomoc')) {
-        const embed = new EmbedBuilder()
-            .setTitle("ZGŁOŚ PROBLEM")
-            .setDescription("Kliknij przycisk, aby zgłosić problem.")
-            .setColor(0x00AE86)
-            .setFooter({ text: '© tajgerek' });
-        const button = new ButtonBuilder()
-            .setCustomId('create_ticket_pomoc')
-            .setLabel('🔨 zgłoś problem')
-            .setStyle(ButtonStyle.Primary);
-        await channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(button)] });
-        return;
+        return message.channel.send({ embeds: [embed], components: [ new ActionRowBuilder().addComponents(button) ] });
     }
 });
 
 client.on('interactionCreate', async interaction => {
     if (!interaction.isButton()) return;
-    const guild = interaction.guild;
+
+    // Obsługa tworzenia ticketu
     if (interaction.customId === 'create_ticket_zglos' || interaction.customId === 'create_ticket_pomoc') {
-        const prefix = interaction.customId === 'create_ticket_zglos' ? 'zglos' : 'pomoc';
-        const channelName = `${prefix}-${interaction.user.username}`;
+        const isReport = interaction.customId === 'create_ticket_zglos';
+        const channelName = `${isReport ? 'zglos' : 'pomoc'}-${interaction.user.username}`;
+
         try {
-            const ticketChannel = await guild.channels.create({
+            const ticketCh = await interaction.guild.channels.create({
                 name: channelName,
                 type: ChannelType.GuildText,
                 parent: TICKET_CATEGORY_OPEN,
                 permissionOverwrites: [
-                    { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-                    { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
-                    { id: ADMIN_ROLE_ID, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
+                    { id: interaction.guild.id,                           deny: [PermissionsBitField.Flags.ViewChannel] },
+                    { id: interaction.user.id,                            allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
+                    { id: ADMIN_ROLE_ID,                                  allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
                 ]
             });
-            await ticketChannel.send(`<@${interaction.user.id}>`);
-            const isReport = interaction.customId === 'create_ticket_zglos';
-            const ticketEmbed = new EmbedBuilder()
-                .setTitle(isReport ? "ZGŁOŚ UŻYTKOWNIKA" : "ZGŁOŚ PROBLEM")
-                .setDescription(isReport ? "Opisz użytkownika i powód." : "Opisz swój problem.")
-                .setColor(isReport ? 0xFF0000 : 0x00AE86)
-                .setFooter({ text: '© tajgerek' });
-            const closeButton = new ButtonBuilder()
+
+            await ticketCh.send(`<@${interaction.user.id}>`);
+
+            const ticketEmbed = withFooter(
+                new EmbedBuilder()
+                    .setTitle(isReport ? 'ZGŁOŚ UŻYTKOWNIKA' : 'ZGŁOŚ PROBLEM')
+                    .setDescription(isReport ? 'Opisz użytkownika i powód.' : 'Opisz swój problem.')
+                    .setColor(isReport ? 0xFF0000 : 0x00AE86)
+            );
+            const closeBtn = new ButtonBuilder()
                 .setCustomId('close_ticket')
                 .setLabel('Zamknij Ticket')
                 .setStyle(ButtonStyle.Danger);
-            await ticketChannel.send({ embeds: [ticketEmbed], components: [new ActionRowBuilder().addComponents(closeButton)] });
-            await interaction.reply({ content: `Ticket utworzony: ${ticketChannel}`, flags: MessageFlags.Ephemeral });
-        } catch (error) {
-            console.error(error);
-            await interaction.reply({ content: "Błąd tworzenia ticketa.", flags: MessageFlags.Ephemeral });
+
+            await ticketCh.send({ embeds: [ticketEmbed], components: [ new ActionRowBuilder().addComponents(closeBtn) ] });
+            await interaction.reply({ content: `Ticket utworzony: ${ticketCh}`, ephemeral: true });
+        } catch (err) {
+            console.error('Błąd tworzenia ticketu:', err);
+            await interaction.reply({ content: 'Błąd tworzenia ticketa.', ephemeral: true });
         }
+        return;
     }
 
+    // Zamknięcie ticketu
     if (interaction.customId === 'close_ticket') {
-        if (!interaction.member.roles.cache.has(ADMIN_ROLE_ID))
-            return interaction.reply({ content: "Brak uprawnień.", flags: MessageFlags.Ephemeral });
+        if (!interaction.member.roles.cache.has(ADMIN_ROLE_ID)) {
+            return interaction.reply({ content: 'Brak uprawnień.', ephemeral: true });
+        }
         await interaction.channel.setParent(TICKET_CATEGORY_CLOSED);
         await interaction.channel.permissionOverwrites.edit(interaction.user.id, { ViewChannel: false });
-        await interaction.reply("Ticket zamknięty.");
+        return interaction.reply('Ticket zamknięty.');
     }
 });
 
+// ===== REACTION ROLES HANDLER =====
 client.on('messageReactionAdd', async (reaction, user) => {
     if (user.bot) return;
-    if (reaction.partial) try { await reaction.fetch(); } catch { return; }
-    if (!reaction.message.guild) return;
+    if (reaction.partial) {
+        try { await reaction.fetch(); }
+        catch { return; }
+    }
+    const msgId = reaction.message.id;
+    if (!dynamicReactionRoleMap.has(msgId)) return;
+
     const key = reaction.emoji.id || reaction.emoji.toString();
-    const data = dynamicReactionRoleMap[key];
-    if (data) {
-        const member = await reaction.message.guild.members.fetch(user.id);
-        if (data.singleChoice) {
-            for (const [emojiKey, value] of Object.entries(dynamicReactionRoleMap)) {
-                if (value.roleId !== data.roleId && value.singleChoice) {
-                    const roleToRemove = value.roleId;
-                    if (member.roles.cache.has(roleToRemove)) {
-                        await member.roles.remove(roleToRemove).catch(() => {});
-                    }
-                }
+    const data = dynamicReactionRoleMap.get(msgId)[key];
+    if (!data) return;
+
+    const member = await reaction.message.guild.members.fetch(user.id);
+
+    if (data.singleChoice) {
+        // usuwamy inne single-choice role z tego embedu
+        for (const [k, v] of Object.entries(dynamicReactionRoleMap.get(msgId))) {
+            if (v.singleChoice && v.roleId !== data.roleId && member.roles.cache.has(v.roleId)) {
+                await member.roles.remove(v.roleId).catch(() => {});
             }
         }
-        if (!member.roles.cache.has(data.roleId)) member.roles.add(data.roleId).catch(() => {});
+    }
+
+    if (!member.roles.cache.has(data.roleId)) {
+        await member.roles.add(data.roleId).catch(() => {});
     }
 });
 
