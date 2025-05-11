@@ -33,7 +33,7 @@ client.once('ready', () => {
 client.on('guildMemberAdd', member => {
   const embed = new EmbedBuilder()
     .setTitle('🎉 Witamy na serwerze! 🎉')
-    .setDescription('Cieszymy się, że dołączyłeś. Zapoznaj się z regulaminem poniżej.')
+    .setDescription('Cieszymy się, że dołączyłeś do naszej społeczności. Mamy nadzieję, że znajdziesz tu przyjazne środowisko oraz wiele ciekawych rozmów i aktywności. Zapoznaj się z regulaminem i zasadami serwera, aby w pełni korzystać z dostępnych możliwości. Jeszcze raz – witamy serdecznie!')
     .setColor('Aqua');
   withFooter(embed);
 
