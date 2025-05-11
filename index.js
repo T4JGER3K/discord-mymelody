@@ -90,39 +90,32 @@ client.on('messageCreate', async message => {
 
   const filter = m => m.author.id === message.author.id;
 
-  // askMessage zwraca obiekt Message lub null
-  const askMessage = async prompt => {
-    await message.channel.send(prompt);
-    const collected = await message.channel.awaitMessages({ filter, max: 1, time: 60000 }).catch(() => null);
-    return collected?.first() ?? null;
-  };
-
-  // askContent zwraca string lub null
-  const askContent = async prompt => {
-    const msg = await askMessage(prompt);
-    return msg?.content ?? null;
-  };
-
-  // 1) kanał
-  const chanMsg = await askMessage('Wskaż kanał (w formie #nazwa):');
-  if (!chanMsg) return message.channel.send('Czas minął, anulowano.');
-  const target = chanMsg.mentions.channels.first();
+  // 1) wybór kanału
+  await message.channel.send('1) Wskaż kanał (np. #nazwa):');
+  let collected = await message.channel.awaitMessages({ filter, max: 1, time: 60000 }).catch(() => null);
+  if (!collected?.size) return message.channel.send('Czas minął, anulowano.');
+  const target = collected.first().mentions.channels.first();
   if (!target) return message.channel.send('Nieprawidłowy kanał.');
 
   // 2) tytuł
-  const title = await askContent('Podaj tytuł embeda:');
-  if (!title) return message.channel.send('Czas minął, anulowano.');
+  await message.channel.send('2) Podaj tytuł embeda:');
+  collected = await message.channel.awaitMessages({ filter, max: 1, time: 60000 }).catch(() => null);
+  if (!collected?.size) return message.channel.send('Czas minął, anulowano.');
+  const title = collected.first().content;
 
-  // 3) treść
-  const embedText = await askContent('Podaj treść embeda:');
-  if (!embedText) return message.channel.send('Czas minął, anulowano.');
+  // 3) treść embeda
+  await message.channel.send('3) Podaj treść embeda:');
+  collected = await message.channel.awaitMessages({ filter, max: 1, time: 60000 }).catch(() => null);
+  if (!collected?.size) return message.channel.send('Czas minął, anulowano.');
+  const embedText = collected.first().content;
 
-  // 4) pary emoji→rola (można wiele)
+  // 4) zbieranie par emoji→rola
   const pairs = [];
-  await message.channel.send('Podaj `:emotka: @rola`. Napisz `koniec`, aby zakończyć.');
+  await message.channel.send('4) Podaj `:emotka: @rola`. Napisz `koniec`, aby zakończyć.');
   while (true) {
-    const entry = await askContent(''); 
-    if (entry === null) return message.channel.send('Czas minął, anulowano.');
+    collected = await message.channel.awaitMessages({ filter, max: 1, time: 120000 }).catch(() => null);
+    if (!collected?.size) return message.channel.send('Czas minął, anulowano.');
+    const entry = collected.first().content.trim();
     if (entry.toLowerCase() === 'koniec') break;
     const match = entry.match(/(<a?:\w+:(\d+)>|\p{Emoji_Presentation})\s+<@&(\d+)>/u);
     if (!match) {
@@ -130,9 +123,10 @@ client.on('messageCreate', async message => {
       continue;
     }
     pairs.push({ emoji: match[1], roleId: match[3] });
+    await message.channel.send(`Dodano: ${match[1]} → <@&${match[3]}>`);
   }
 
-  // 5) tworzymy i wysyłamy embed
+  // Tworzenie i wysyłka embeda
   const rrEmbed = withFooter(new EmbedBuilder()
     .setTitle(title)
     .setDescription(embedText)
@@ -147,13 +141,12 @@ client.on('messageCreate', async message => {
     dynamicReactionRoleMap.get(sent.id)[key] = { roleId, singleChoice: false };
   }
 
-  message.channel.send('✅ Reaction roles utworzone!');
+  message.channel.send(`✅ Reaction roles utworzone na kanale ${target}`);
 });
 
-// TICKET SYSTEM – wysyłanie embedów z przyciskami
+// TICKET SYSTEM – komendy i interakcje
 client.on('messageCreate', async message => {
   if (message.author.bot) return;
-
   if (message.content.startsWith('$ticket zglos') || message.content.startsWith('$ticket pomoc')) {
     const isReport = message.content.startsWith('$ticket zglos');
     const ticketEmbed = withFooter(new EmbedBuilder()
@@ -176,15 +169,13 @@ client.on('messageCreate', async message => {
   }
 });
 
-// OBSŁUGA INTERAKCJI DLA TICKETÓW
 client.on('interactionCreate', async interaction => {
   if (!interaction.isButton()) return;
 
-  // CREATE TICKET
+  // Tworzenie ticketu
   if (interaction.customId === 'create_ticket_zglos' || interaction.customId === 'create_ticket_pomoc') {
     const isReport = interaction.customId === 'create_ticket_zglos';
     const channelName = `${isReport ? 'zglos' : 'pomoc'}-${interaction.user.username}`;
-
     try {
       const ticketCh = await interaction.guild.channels.create({
         name: channelName,
@@ -222,14 +213,14 @@ client.on('interactionCreate', async interaction => {
     return;
   }
 
-  // CLOSE TICKET
+  // Zamknięcie ticketu
   if (interaction.customId === 'close_ticket') {
     if (!interaction.member.roles.cache.has(ADMIN_ROLE_ID)) {
       return interaction.reply({ content: 'Brak uprawnień.', ephemeral: true });
     }
     await interaction.channel.setParent(TICKET_CATEGORY_CLOSED);
     await interaction.channel.permissionOverwrites.edit(interaction.user.id, { ViewChannel: false });
-    await interaction.reply('Ticket zamknięty.');
+    return interaction.reply('Ticket zamknięty.');
   }
 });
 
@@ -241,16 +232,13 @@ client.on('messageReactionAdd', async (reaction, user) => {
   }
   if (reaction.message.author.id !== client.user.id) return;
 
-  const msgId = reaction.message.id;
-  if (!dynamicReactionRoleMap.has(msgId)) return;
-
+  const dataMap = dynamicReactionRoleMap.get(reaction.message.id);
+  if (!dataMap) return;
   const key = reaction.emoji.id || reaction.emoji.toString();
-  const data = dynamicReactionRoleMap.get(msgId)[key];
+  const data = dataMap[key];
   if (!data) return;
 
   const member = await reaction.message.guild.members.fetch(user.id);
-  if (!member) return;
-
   if (!member.roles.cache.has(data.roleId)) {
     await member.roles.add(data.roleId).catch(() => {});
   }
