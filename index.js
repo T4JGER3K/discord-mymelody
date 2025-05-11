@@ -22,7 +22,8 @@ const client = new Client({
   partials: [
     Partials.Message,
     Partials.Channel,
-    Partials.Reaction
+    Partials.Reaction,
+    Partials.User
   ]
 });
 
@@ -152,14 +153,13 @@ client.on('messageCreate', async message => {
     localMap[key] = { roleId, singleChoice };
   }
 
-  // Zapisujemy tę mapę globalnie, gdybyś chciał później usuwać lub edytować
+  // Zapisujemy tę mapę globalnie
   dynamicReactionRoleMap.set(sent.id, localMap);
 
-  // Tworzymy kolektor wyjątkowo TYLKO na tę wiadomość
+  // Tworzymy kolektor tylko na tę wiadomość
   const collector = sent.createReactionCollector({
     filter: (reaction, user) => {
       if (user.bot) return false;
-      // bierzemy klucz z emoji
       const key = reaction.emoji.id || reaction.emoji.toString();
       return Object.prototype.hasOwnProperty.call(localMap, key);
     }
@@ -171,7 +171,6 @@ client.on('messageCreate', async message => {
     const member = await sent.guild.members.fetch(user.id).catch(() => null);
     if (!member) return;
 
-    // jednokrotny wybór: usuwamy inne
     if (data.singleChoice) {
       for (const vKey of Object.keys(localMap)) {
         if (vKey !== key && localMap[vKey].singleChoice && member.roles.cache.has(localMap[vKey].roleId)) {
@@ -180,18 +179,15 @@ client.on('messageCreate', async message => {
       }
     }
 
-    // dodaj rolę
     if (!member.roles.cache.has(data.roleId)) {
       await member.roles.add(data.roleId).catch(() => {});
     }
   });
 
-  // (opcjonalne) obsługa usunięcia reakcji:
   collector.on('remove', async (reaction, user) => {
     const key = reaction.emoji.id || reaction.emoji.toString();
     const data = localMap[key];
-    if (!data) return;
-    if (data.singleChoice) return; // przy singleChoice nie zdejmujemy przy usunięciu
+    if (!data || data.singleChoice) return;
     const member = await sent.guild.members.fetch(user.id).catch(() => null);
     if (!member) return;
     if (member.roles.cache.has(data.roleId)) {
@@ -202,7 +198,7 @@ client.on('messageCreate', async message => {
   await message.channel.send(`✅ Reaction roles utworzone na kanale ${target}`);
 });
 
-// TICKET SYSTEM (bez zmian)
+// TICKET SYSTEM
 client.on('messageCreate', async message => {
   if (message.author.bot) return;
   if (message.content.startsWith('$ticket zglos') || message.content.startsWith('$ticket pomoc')) {
