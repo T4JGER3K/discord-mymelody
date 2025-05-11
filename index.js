@@ -89,33 +89,40 @@ client.on('messageCreate', async message => {
   }
 
   const filter = m => m.author.id === message.author.id;
-  // ask zwraca string (treść wiadomości) lub null
-  const ask = async prompt => {
+
+  // askMessage zwraca obiekt Message lub null
+  const askMessage = async prompt => {
     await message.channel.send(prompt);
     const collected = await message.channel.awaitMessages({ filter, max: 1, time: 60000 }).catch(() => null);
-    return collected?.first()?.content ?? null;
+    return collected?.first() ?? null;
+  };
+
+  // askContent zwraca string lub null
+  const askContent = async prompt => {
+    const msg = await askMessage(prompt);
+    return msg?.content ?? null;
   };
 
   // 1) kanał
-  const chanAnswer = await ask('Wskaż kanał (w formie #nazwa):');
-  if (!chanAnswer) return message.channel.send('Czas minął, anulowano.');
-  const target = message.mentions.channels.first();
+  const chanMsg = await askMessage('Wskaż kanał (w formie #nazwa):');
+  if (!chanMsg) return message.channel.send('Czas minął, anulowano.');
+  const target = chanMsg.mentions.channels.first();
   if (!target) return message.channel.send('Nieprawidłowy kanał.');
 
   // 2) tytuł
-  const title = await ask('Podaj tytuł embeda:');
+  const title = await askContent('Podaj tytuł embeda:');
   if (!title) return message.channel.send('Czas minął, anulowano.');
 
   // 3) treść
-  const embedText = await ask('Podaj treść embeda:');
+  const embedText = await askContent('Podaj treść embeda:');
   if (!embedText) return message.channel.send('Czas minął, anulowano.');
 
   // 4) pary emoji→rola (można wiele)
   const pairs = [];
   await message.channel.send('Podaj `:emotka: @rola`. Napisz `koniec`, aby zakończyć.');
   while (true) {
-    const entry = await ask(''); 
-    if (!entry) return message.channel.send('Czas minął, anulowano.');
+    const entry = await askContent(''); 
+    if (entry === null) return message.channel.send('Czas minął, anulowano.');
     if (entry.toLowerCase() === 'koniec') break;
     const match = entry.match(/(<a?:\w+:(\d+)>|\p{Emoji_Presentation})\s+<@&(\d+)>/u);
     if (!match) {
