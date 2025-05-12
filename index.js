@@ -39,10 +39,7 @@ client.on('guildMemberAdd', async member => {
     const welcomeEmbed = new EmbedBuilder()
       .setTitle('🎉 Witamy na serwerze! 🎉')
       .setDescription(
-        'Cieszymy się, że dołączyłeś do naszej społeczności. ' +
-        'Mamy nadzieję, że znajdziesz tu przyjazne środowisko oraz wiele ciekawych rozmów i aktywności. ' +
-        'Zapoznaj się z regulaminem i zasadami serwera, aby w pełni korzystać z dostępnych możliwości. ' +
-        'Jeszcze raz – witamy serdecznie!'
+        'Cieszymy się, że dołączyłeś do naszej społeczności. Mamy nadzieję, że znajdziesz tu przyjazne środowisko oraz wiele ciekawych rozmów i aktywności. Zapoznaj się z regulaminem i zasadami serwera, aby w pełni korzystać z dostępnych możliwości. Jeszcze raz – witamy serdecznie!'
       )
       .addFields(
         { name: 'Nazwa użytkownika',    value: member.user.username, inline: true },
