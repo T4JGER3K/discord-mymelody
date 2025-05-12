@@ -1,15 +1,14 @@
-// ------- IMPORTY -------
 const { Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, ChannelType } = require('discord.js');
 const fs = require('fs');
 
 // ------- KONFIGURACJA -------
 const REGULAMIN_CHANNEL_ID = '1348705958939066396';
-const WELCOME_CHANNEL_ID = '1348705958939066393';
-const TICKET_CATEGORY_ID = '1350857928583807039';
-const CLOSED_CATEGORY_ID = '1350857964675661885';
-const SUPPORT_ROLE_ID = '1350176648368230601';
+const WELCOME_CHANNEL_ID   = '1348705958939066393';
+const TICKET_CATEGORY_ID   = '1350857928583807039';
+const CLOSED_CATEGORY_ID   = '1350857964675661885'; // jeśli brak, ustaw na null lub ''
+const SUPPORT_ROLE_ID      = '1350176648368230601'; // opcjonalnie
 
-// ------- POMOCNICZY EMITOWANIA FOOTER -------
+// ------- POMOCNICZY: STOPKA -------
 function withFooter(embed) {
   return embed.setFooter({ text: '© tajgerek' });
 }
@@ -31,49 +30,47 @@ client.once('ready', () => {
 });
 
 // ------- POWITANIE NOWYCH CZŁONKÓW (JEDEN LISTENER) -------
-client.on('guildMemberAdd', async (member) => {
+client.on('guildMemberAdd', async member => {
   try {
-    const welcomeChannel = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
-    if (!welcomeChannel || !welcomeChannel.isTextBased()) return;
+    const ch = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
+    if (!ch || !ch.isTextBased()) return;
 
-    // Budowa embed
+    // Kompletne powitanie w jednym embedzie
     const welcomeEmbed = new EmbedBuilder()
       .setTitle('🎉 Witamy na serwerze! 🎉')
       .setDescription(
-        `Witaj <@${member.id}>!
-
-Cieszymy się, że dołączyłeś do naszej społeczności. ` +
-        `Zapoznaj się z regulaminem, aby w pełni korzystać z serwera.`
+        'Cieszymy się, że dołączyłeś do naszej społeczności. ' +
+        'Mamy nadzieję, że znajdziesz tu przyjazne środowisko oraz wiele ciekawych rozmów i aktywności. ' +
+        'Zapoznaj się z regulaminem i zasadami serwera, aby w pełni korzystać z dostępnych możliwości. ' +
+        'Jeszcze raz – witamy serdecznie!'
       )
       .addFields(
         { name: 'Nazwa użytkownika',    value: member.user.username, inline: true },
         { name: 'Data utworzenia konta', value: `<t:${Math.floor(member.user.createdTimestamp/1000)}:R>`, inline: true }
       )
       .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
-      .setColor(0x00AE86)
+      .setColor('Aqua')
       .setTimestamp();
-
     withFooter(welcomeEmbed);
 
-    // Przycisk do regulaminu
     const regBtn = new ButtonBuilder()
-      .setStyle(ButtonStyle.Link)
       .setLabel('📜 Regulamin')
+      .setStyle(ButtonStyle.Link)
       .setURL(`https://discord.com/channels/${member.guild.id}/${REGULAMIN_CHANNEL_ID}`);
 
     const row = new ActionRowBuilder().addComponents(regBtn);
-
-    await welcomeChannel.send({ embeds: [welcomeEmbed], components: [row] });
+    await ch.send({ embeds: [welcomeEmbed], components: [row] });
   } catch (err) {
     console.error('Błąd powitania:', err);
   }
 });
 
 // ------- OBSŁUGA BUTTONÓW (TICKETY) -------
-client.on('interactionCreate', async (interaction) => {
+client.on('interactionCreate', async interaction => {
   if (!interaction.isButton()) return;
   const { customId, user, guild } = interaction;
 
+  // Tworzenie ticketu
   if (customId === 'report_user' || customId === 'report_problem') {
     const usernameClean = user.username.toLowerCase().replace(/[^a-z0-9]/g, '');
     const channelName = `ticket-${usernameClean}-${user.discriminator}`;
@@ -84,6 +81,7 @@ client.on('interactionCreate', async (interaction) => {
       permissionOverwrites: [
         { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
         { id: user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
+        // jeśli chcesz, dopisz SUPPORT_ROLE_ID z dostępem
       ],
     });
 
@@ -100,9 +98,10 @@ client.on('interactionCreate', async (interaction) => {
       .setStyle(ButtonStyle.Danger);
     const closeRow = new ActionRowBuilder().addComponents(closeButton);
 
-    ticketChannel.send({ embeds: [ticketEmbed], components: [closeRow] });
+    await ticketChannel.send({ embeds: [ticketEmbed], components: [closeRow] });
   }
 
+  // Zamknięcie ticketu
   if (customId === 'close_ticket') {
     const ticketChannel = interaction.channel;
     if (!ticketChannel || ticketChannel.parentId !== TICKET_CATEGORY_ID) return;
@@ -152,5 +151,4 @@ client.on('messageReactionRemove', async (reaction, user) => {
   }
 });
 
-// ------- LOGOWANIE BOTA -------
 client.login(process.env.TOKEN);
