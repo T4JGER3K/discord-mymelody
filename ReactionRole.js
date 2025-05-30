@@ -1,4 +1,4 @@
-// models/ReactionRole.js
+
 const mongoose = require('mongoose');
 
 const reactionRoleSchema = new mongoose.Schema({
@@ -7,6 +7,7 @@ const reactionRoleSchema = new mongoose.Schema({
   messageId: { type: String, required: true },  // ID wiadomości, na której reagujemy
   emoji:     { type: String, required: true },  // Emoji (nazwa Unicode lub ID emoji)
   roleId:    { type: String, required: true }   // ID roli do nadania
+  exclusive: { type: Boolean, default: false }   // <<< DODANE
 });
 
 // Tworzymy model „ReactionRole” na podstawie powyższego schematu
