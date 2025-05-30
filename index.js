@@ -5,7 +5,7 @@ const {
   ButtonBuilder, ButtonStyle, PermissionsBitField, ChannelType, Events 
 } = require('discord.js');
 require('./database'); // łączy z MongoDB
-const ReactionRole = require('./models/ReactionRole'); // model Mongoose
+const ReactionRole = require('./ReactionRole'); // model Mongoose
 
 // ID kanałów i kategorii (zmień na swoje)
 const REGULAMIN_CHANNEL_ID = '1348705958939066396';
