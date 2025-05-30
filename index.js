@@ -34,9 +34,9 @@ client.once(Events.ClientReady, () => {
   // Ustawienie statusu Streamingu
   client.user.setPresence({
     activities: [{
-      name: 'na Twitchu',                     // tekst wyświetlany w statusie
+      name: 'cinamoinka',                     // tekst wyświetlany w statusie
       type: ActivityType.Streaming,           // typ “streamuje”
-      url: 'https://twitch.tv/twojkanal'      // Twój link do Twitcha
+      url: 'https://twitch.tv/cinamoinka'      // Twój link do Twitcha
     }],
     status: 'online'                          // online | idle | dnd
   });
