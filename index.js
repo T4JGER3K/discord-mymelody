@@ -1,11 +1,11 @@
-// index.js
 require('dotenv').config();
 const { 
   Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, 
-  ButtonBuilder, ButtonStyle, PermissionsBitField, ChannelType, Events 
+  ButtonBuilder, ButtonStyle, PermissionsBitField, ChannelType, Events,
+  ActivityType
 } = require('discord.js');
 require('./database'); // łączy z MongoDB
-const ReactionRole = require('./ReactionRole'); // model Mongoose
+const ReactionRole = require('./models/ReactionRole'); // model Mongoose
 
 // ID kanałów i kategorii (zmień na swoje)
 const REGULAMIN_CHANNEL_ID = '1348705958939066396';
@@ -31,6 +31,15 @@ const client = new Client({
 // Po zalogowaniu
 client.once(Events.ClientReady, () => {
   console.log(`Bot zalogowany jako ${client.user.tag}`);
+  // Ustawienie statusu Streamingu
+  client.user.setPresence({
+    activities: [{
+      name: 'na Twitchu',                     // tekst wyświetlany w statusie
+      type: ActivityType.Streaming,           // typ “streamuje”
+      url: 'https://twitch.tv/twojkanal'      // Twój link do Twitcha
+    }],
+    status: 'online'                          // online | idle | dnd
+  });
 });
 
 // Komenda $rr – konfiguracja reaction roles
