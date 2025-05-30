@@ -2,6 +2,8 @@ const { Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, But
 const fs = require('fs');
 const path = require('path');
 require('./database');
+const ReactionRole = require('./ReactionRole');
+
 
 // ------- KONFIGURACJA -------
 const REGULAMIN_CHANNEL_ID = '1348705958939066396';
