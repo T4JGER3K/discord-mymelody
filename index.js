@@ -1,6 +1,7 @@
 const { Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, ChannelType, SlashCommandBuilder, REST, Routes, Collection } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+require('./database');
 
 // ------- KONFIGURACJA -------
 const REGULAMIN_CHANNEL_ID = '1348705958939066396';
