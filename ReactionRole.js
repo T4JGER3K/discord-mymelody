@@ -6,7 +6,7 @@ const reactionRoleSchema = new mongoose.Schema({
   channelId: { type: String, required: true },  // ID kanału z wiadomością
   messageId: { type: String, required: true },  // ID wiadomości, na której reagujemy
   emoji:     { type: String, required: true },  // Emoji (nazwa Unicode lub ID emoji)
-  roleId:    { type: String, required: true }   // ID roli do nadania
+  roleId:    { type: String, required: true },   // ID roli do nadania
   exclusive: { type: Boolean, default: false }   // <<< DODANE
 });
 
