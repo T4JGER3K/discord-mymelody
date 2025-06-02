@@ -31,7 +31,8 @@ const client = new Client({
 // Zestaw do przechowywania ID użytkowników, którzy zostali już powitani
 const recentlyWelcomed = new Set();
 
-// Po zalogowaniu\ nclient.once(Events.ClientReady, () => {
+// Po zalogowaniu
+client.once(Events.ClientReady, () => {
   console.log(`Bot zalogowany jako ${client.user.tag}`);
   // Ustawienie statusu Streamingu
   client.user.setPresence({
@@ -42,6 +43,7 @@ const recentlyWelcomed = new Set();
     }],
     status: 'online'                          // online | idle | dnd
   });
+});
 
 // Komenda $rr – konfiguracja reaction roles
 client.on(Events.MessageCreate, async (message) => {
@@ -142,7 +144,6 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
     for (const other of await ReactionRole.find({ messageId: msg.id, guildId: msg.guild.id })) {
       if (other.roleId !== entry.roleId) {
         await member.roles.remove(other.roleId).catch(() => {});
-        // opcjonalnie usuń reakcję użytkownika na innych emoji:
         const r = msg.reactions.cache.get(other.emoji);
         if (r) await r.users.remove(user.id).catch(() => {});
       }
@@ -180,7 +181,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
 
   try {
     const ch = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
-    if (!ch?.isTextBased()) return;
+    if (!ch?\.isTextBased()) return;
 
     const welcomeEmbed = new EmbedBuilder()
       .setTitle('🎉 Witamy na serwerze! 🎉')
