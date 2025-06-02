@@ -181,7 +181,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
 
   try {
     const ch = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
-    if (!ch?\.isTextBased()) return;
+    if (!ch?.isTextBased()) return;
 
     const welcomeEmbed = new EmbedBuilder()
       .setTitle('🎉 Witamy na serwerze! 🎉')
