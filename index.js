@@ -10,8 +10,6 @@ const ReactionRole = require('./ReactionRole'); // model Mongoose
 // ID kanałów i kategorii (zmień na swoje)
 const REGULAMIN_CHANNEL_ID = '1348705958939066396';
 const WELCOME_CHANNEL_ID   = '1348705958939066393';
-const TICKET_CATEGORY_ID   = '1350857928583807039';
-const CLOSED_CATEGORY_ID   = '1350857964675661885';
 
 function withFooter(embed) {
   return embed.setFooter({ text: '© tajgerek' });
@@ -30,8 +28,6 @@ const client = new Client({
 
 // Zestaw do przechowywania ID użytkowników, którzy zostali już powitani
 const recentlyWelcomed = new Set();
-// Zestaw do przechowywania ID użytkowników, którzy właśnie tworzą ticket (zapobiega podwójnemu tworzeniu)
-const recentlyTicketed = new Set();
 
 // Po zalogowaniu
 client.once(Events.ClientReady, () => {
@@ -211,74 +207,6 @@ client.on(Events.GuildMemberAdd, async (member) => {
     await ch.send({ embeds: [welcomeEmbed], components: [new ActionRowBuilder().addComponents(regBtn)] });
   } catch (err) {
     console.error('Błąd powitania:', err);
-  }
-});
-
-// System ticketów – przyciski i kanały
-client.on(Events.InteractionCreate, async (interaction) => {
-  if (!interaction.isButton()) return;
-
-  const { customId, user, guild } = interaction;
-
-  // Tworzenie ticketu
-  if (customId === 'report_user' || customId === 'report_problem') {
-    // Zapobiegamy podwójnemu
-    if (recentlyTicketed.has(user.id)) return interaction.reply({ content: 'Twój ticket jest już tworzony...', ephemeral: true });
-    recentlyTicketed.add(user.id);
-    setTimeout(() => recentlyTicketed.delete(user.id), 5000);
-
-    const clean = user.username.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const name = `ticket-${clean}-${user.discriminator}`;
-
-    // Sprawdzenie, czy użytkownik ma już otwarty ticket
-    const existing = guild.channels.cache.find(c =>
-      c.parentId === TICKET_CATEGORY_ID &&
-      c.type === ChannelType.GuildText &&
-      c.name.includes(clean)
-    );
-    if (existing) {
-      return interaction.reply({ content: `Masz już otwarty ticket: <#${existing.id}>`, ephemeral: true });
-    }
-
-    const ticket = await guild.channels.create({
-      name,
-      type: ChannelType.GuildText,
-      parent: TICKET_CATEGORY_ID,
-      permissionOverwrites: [
-        { id: guild.roles.everyone.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-        { id: user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] }
-      ]
-    });
-    await interaction.reply({ content: `Ticket utworzony: <#${ticket.id}>`, ephemeral: true });
-
-    const embed = new EmbedBuilder()
-      .setDescription('Opisz swój problem lub zachowanie użytkownika tutaj. Po zakończeniu kliknij **Zamknij Ticket**.')
-      .setColor('Blue');
-    withFooter(embed);
-
-    const closeBtn = new ButtonBuilder()
-      .setCustomId('close_ticket')
-      .setLabel('Zamknij Ticket')
-      .setStyle(ButtonStyle.Danger);
-
-    await ticket.send({
-      embeds: [embed],
-      components: [new ActionRowBuilder().addComponents(closeBtn)]
-    });
-  }
-
-  // Zamknięcie ticketu
-  if (customId === 'close_ticket') {
-    const chan = interaction.channel;
-    if (!chan || chan.parentId !== TICKET_CATEGORY_ID) return;
-    if (CLOSED_CATEGORY_ID) {
-      await chan.setParent(CLOSED_CATEGORY_ID);
-      await chan.permissionOverwrites.edit(interaction.user.id, { SendMessages: false });
-      await interaction.reply({ content: 'Ticket zamknięty i przeniesiony.', ephemeral: true });
-    } else {
-      await interaction.reply({ content: 'Ticket zostanie usunięty.', ephemeral: true });
-      setTimeout(() => chan.delete(), 1000);
-    }
   }
 });
 
