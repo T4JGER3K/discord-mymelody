@@ -30,6 +30,8 @@ const client = new Client({
 
 // Zestaw do przechowywania ID użytkowników, którzy zostali już powitani
 const recentlyWelcomed = new Set();
+// Zestaw do przechowywania ID użytkowników, którzy właśnie tworzą ticket (zapobiega podwójnemu tworzeniu)
+const recentlyTicketed = new Set();
 
 // Po zalogowaniu
 client.once(Events.ClientReady, () => {
@@ -181,7 +183,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
 
   try {
     const ch = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
-    if (!ch?.isTextBased()) return;
+    if (!ch.isTextBased()) return;
 
     const welcomeEmbed = new EmbedBuilder()
       .setTitle('🎉 Witamy na serwerze! 🎉')
@@ -220,6 +222,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   // Tworzenie ticketu
   if (customId === 'report_user' || customId === 'report_problem') {
+    // Zapobiegamy podwójnemu
+    if (recentlyTicketed.has(user.id)) return interaction.reply({ content: 'Twój ticket jest już tworzony...', ephemeral: true });
+    recentlyTicketed.add(user.id);
+    setTimeout(() => recentlyTicketed.delete(user.id), 5000);
+
     const clean = user.username.toLowerCase().replace(/[^a-z0-9]/g, '');
     const name = `ticket-${clean}-${user.discriminator}`;
 
