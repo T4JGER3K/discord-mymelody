@@ -42,7 +42,6 @@ const recentlyWelcomed = new Set();
     }],
     status: 'online'                          // online | idle | dnd
   });
-});
 
 // Komenda $rr – konfiguracja reaction roles
 client.on(Events.MessageCreate, async (message) => {
