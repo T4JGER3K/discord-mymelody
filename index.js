@@ -4,10 +4,9 @@ const {
   ButtonBuilder, ButtonStyle, PermissionsBitField, ChannelType, Events,
   ActivityType
 } = require('discord.js');
-require('./database'); // łączy z MongoDB
-const ReactionRole = require('./ReactionRole'); // model Mongoose
+require('./database');
+const ReactionRole = require('./ReactionRole');
 
-// ID kanałów i kategorii (zmień na swoje)
 const REGULAMIN_CHANNEL_ID = '1348705958939066396';
 const WELCOME_CHANNEL_ID   = '1348705958939066393';
 const TICKET_CATEGORY_ID   = '1350857928583807039';
@@ -28,21 +27,18 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
 
-// Po zalogowaniu
 client.once(Events.ClientReady, () => {
   console.log(`Bot zalogowany jako ${client.user.tag}`);
-  // Ustawienie statusu Streamingu
   client.user.setPresence({
     activities: [{
-      name: 'cinamoinka',                     // tekst wyświetlany w statusie
-      type: ActivityType.Streaming,           // typ “streamuje”
-      url: 'https://twitch.tv/cinamoinka'      // Twój link do Twitcha
+      name: 'cinamoinka',
+      type: ActivityType.Streaming,
+      url: 'https://twitch.tv/cinamoinka'
     }],
-    status: 'online'                          // online | idle | dnd
+    status: 'online'
   });
 });
 
-// Komenda $rr – konfiguracja reaction roles
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
   if (message.content !== '$rr' || !message.member.permissions.has(PermissionsBitField.Flags.ManageGuild)) return;
@@ -51,30 +47,24 @@ client.on(Events.MessageCreate, async (message) => {
   const TIMEOUT = 180000;
 
   try {
-    // 1) Wybór kanału
     await message.channel.send('Na jakim kanale ma być wiadomość? (podaj #nazwakanału)');
     const chanMsg = await message.channel.awaitMessages({ filter, max: 1, time: TIMEOUT, errors: ['time'] });
     const chan = chanMsg.first().mentions.channels.first();
     if (!chan) return message.channel.send('❌ Niepoprawny kanał. Przerwano.');
 
-    // 2) Tytuł embedu
     await message.channel.send('Podaj tytuł embeda:');
     const title = (await message.channel.awaitMessages({ filter, max: 1, time: TIMEOUT, errors: ['time'] })).first().content;
 
-    // 3) Opis embedu
     await message.channel.send('Podaj treść embeda:');
     const description = (await message.channel.awaitMessages({ filter, max: 1, time: TIMEOUT, errors: ['time'] })).first().content;
 
-    // 4) Kolor embedu
     await message.channel.send('Podaj kolor embeda:');
     const color = (await message.channel.awaitMessages({ filter, max: 1, time: TIMEOUT, errors: ['time'] })).first().content;
 
-    // 5) Jednokrotny wybór?
     await message.channel.send('Czy role mają być jednokrotnego wyboru? (tak/nie)');
     const exclusiveResp = (await message.channel.awaitMessages({ filter, max: 1, time: TIMEOUT, errors: ['time'] })).first().content.toLowerCase();
     const exclusive = exclusiveResp === 'tak';
 
-    // 6) Parowanie emoji ↔️ rola
     const pairs = [];
     await message.channel.send("Podaj reakcję i rolę (emoji @rola). Wpisz 'gotowe' by zakończyć.");
     while (true) {
@@ -92,7 +82,6 @@ client.on(Events.MessageCreate, async (message) => {
       await message.channel.send(`Dodano: ${em} -> ${role.name}`);
     }
 
-    // 7) Wysyłamy embed
     const embed = new EmbedBuilder()
       .setTitle(title)
       .setDescription(description)
@@ -100,7 +89,6 @@ client.on(Events.MessageCreate, async (message) => {
     withFooter(embed);
     const sent = await chan.send({ embeds: [embed] });
 
-    // 8) Dodajemy reakcje i zapisujemy w DB
     for (const p of pairs) {
       await sent.react(p.emoji).catch(console.error);
       await ReactionRole.create({
@@ -119,29 +107,21 @@ client.on(Events.MessageCreate, async (message) => {
   }
 });
 
-// Obsługa reaction roles – dodawanie roli
 client.on(Events.MessageReactionAdd, async (reaction, user) => {
   if (user.bot) return;
-  if (reaction.partial) {
-    try { await reaction.fetch(); } catch { return; }
-  }
-  if (reaction.message.partial) {
-    try { await reaction.message.fetch(); } catch { return; }
-  }
+  if (reaction.partial) try { await reaction.fetch(); } catch { return; }
+  if (reaction.message.partial) try { await reaction.message.fetch(); } catch { return; }
 
   const msg = reaction.message;
   const emojiKey = reaction.emoji.id ? `<:${reaction.emoji.name}:${reaction.emoji.id}>` : reaction.emoji.toString();
-
   const entry = await ReactionRole.findOne({ messageId: msg.id, guildId: msg.guild.id, emoji: emojiKey });
   if (!entry) return;
 
   const member = await msg.guild.members.fetch(user.id);
   if (entry.exclusive) {
-    // usuń inne reakcje i role
     for (const other of await ReactionRole.find({ messageId: msg.id, guildId: msg.guild.id })) {
       if (other.roleId !== entry.roleId) {
         await member.roles.remove(other.roleId).catch(() => {});
-        // opcjonalnie usuń reakcję użytkownika na innych emoji:
         const r = msg.reactions.cache.get(other.emoji);
         if (r) await r.users.remove(user.id).catch(() => {});
       }
@@ -150,19 +130,13 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
   await member.roles.add(entry.roleId).catch(console.error);
 });
 
-// Obsługa reaction roles – usuwanie roli
 client.on(Events.MessageReactionRemove, async (reaction, user) => {
   if (user.bot) return;
-  if (reaction.partial) {
-    try { await reaction.fetch(); } catch { return; }
-  }
-  if (reaction.message.partial) {
-    try { await reaction.message.fetch(); } catch { return; }
-  }
+  if (reaction.partial) try { await reaction.fetch(); } catch { return; }
+  if (reaction.message.partial) try { await reaction.message.fetch(); } catch { return; }
 
   const msg = reaction.message;
   const emojiKey = reaction.emoji.id ? `<:${reaction.emoji.name}:${reaction.emoji.id}>` : reaction.emoji.toString();
-
   const entry = await ReactionRole.findOne({ messageId: msg.id, guildId: msg.guild.id, emoji: emojiKey });
   if (!entry) return;
 
@@ -170,8 +144,12 @@ client.on(Events.MessageReactionRemove, async (reaction, user) => {
   await member.roles.remove(entry.roleId).catch(console.error);
 });
 
-// Powitanie nowych członków
+const recentlyWelcomed = new Set();
 client.on(Events.GuildMemberAdd, async (member) => {
+  if (recentlyWelcomed.has(member.id)) return;
+  recentlyWelcomed.add(member.id);
+  setTimeout(() => recentlyWelcomed.delete(member.id), 5000);
+
   try {
     const ch = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
     if (!ch?.isTextBased()) return;
@@ -186,7 +164,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
         'Jeszcze raz – witamy serdecznie!'
       )
       .addFields(
-        { name: 'Nazwa użytkownika',    value: member.user.username, inline: true },
+        { name: 'Nazwa użytkownika', value: member.user.username, inline: true },
         { name: 'Data utworzenia konta', value: `<t:${Math.floor(member.user.createdTimestamp/1000)}:R>`, inline: true }
       )
       .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
@@ -205,16 +183,24 @@ client.on(Events.GuildMemberAdd, async (member) => {
   }
 });
 
-// System ticketów – przyciski i kanały
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isButton()) return;
 
   const { customId, user, guild } = interaction;
 
-  // Tworzenie ticketu
   if (customId === 'report_user' || customId === 'report_problem') {
     const clean = user.username.toLowerCase().replace(/[^a-z0-9]/g, '');
     const name = `ticket-${clean}-${user.discriminator}`;
+
+    const existing = guild.channels.cache.find(c =>
+      c.parentId === TICKET_CATEGORY_ID &&
+      c.type === ChannelType.GuildText &&
+      c.name.includes(clean)
+    );
+    if (existing) {
+      return interaction.reply({ content: `Masz już otwarty ticket: <#${existing.id}>`, ephemeral: true });
+    }
+
     const ticket = await guild.channels.create({
       name,
       type: ChannelType.GuildText,
@@ -242,7 +228,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     });
   }
 
-  // Zamknięcie ticketu
   if (customId === 'close_ticket') {
     const chan = interaction.channel;
     if (!chan || chan.parentId !== TICKET_CATEGORY_ID) return;
