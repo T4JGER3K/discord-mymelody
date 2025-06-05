@@ -7,7 +7,32 @@ const {
 require('./database'); // łączy z MongoDB
 const ReactionRole = require('./ReactionRole'); // model Mongoose
 
-// ID kanałów i kategorii (zmień na swoje)
+// -------------------- CACHE SETUP --------------------
+// Reakcje przechowywane w pamięci dla szybszego dostępu
+const reactionRoleCache = new Map();
+
+async function loadReactionRoles() {
+  try {
+    // Synchronizuj indeksy w DB
+    await ReactionRole.syncIndexes();
+    // Pobierz wszystkie wpisy z kolekcji
+    const all = await ReactionRole.find().lean();
+    for (const entry of all) {
+      const key = `${entry.guildId}:${entry.messageId}`;
+      if (!reactionRoleCache.has(key)) reactionRoleCache.set(key, []);
+      reactionRoleCache.get(key).push(entry);
+    }
+    console.log(`Załadowano ${all.length} reakcji z bazy`);
+  } catch (err) {
+    console.error('Błąd ładowania reaction roles:', err);
+  }
+}
+
+function getCacheEntries(guildId, messageId) {
+  return reactionRoleCache.get(`${guildId}:${messageId}`) || [];
+}
+
+// -------------------- CONFIG --------------------
 const REGULAMIN_CHANNEL_ID = '1348705958939066396';
 const WELCOME_CHANNEL_ID   = '1348705958939066393';
 
@@ -26,24 +51,24 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
 
-// Zestaw do przechowywania ID użytkowników, którzy zostali już powitani
-const recentlyWelcomed = new Set();
-
-// Po zalogowaniu
-client.once(Events.ClientReady, () => {
+// -------------------- READY --------------------
+client.once(Events.ClientReady, async () => {
   console.log(`Bot zalogowany jako ${client.user.tag}`);
   // Ustawienie statusu Streamingu
   client.user.setPresence({
     activities: [{
-      name: 'cinamoinka',                     // tekst wyświetlany w statusie
-      type: ActivityType.Streaming,           // typ “streamuje”
-      url: 'https://twitch.tv/cinamoinka'      // Twój link do Twitcha
+      name: 'cinamoinka',
+      type: ActivityType.Streaming,
+      url: 'https://twitch.tv/cinamoinka'
     }],
-    status: 'online'                          // online | idle | dnd
+    status: 'online'
   });
+
+  // Załaduj cache reaction roles
+  await loadReactionRoles();
 });
 
-// Komenda $rr – konfiguracja reaction roles
+// -------------------- KOMENDA $rr --------------------
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
   if (message.content !== '$rr' || !message.member.permissions.has(PermissionsBitField.Flags.ManageGuild)) return;
@@ -62,7 +87,7 @@ client.on(Events.MessageCreate, async (message) => {
     await message.channel.send('Podaj tytuł embeda:');
     const title = (await message.channel.awaitMessages({ filter, max: 1, time: TIMEOUT, errors: ['time'] })).first().content;
 
-    // 3) Opis embedu
+    // 3) Opis embeda
     await message.channel.send('Podaj treść embeda:');
     const description = (await message.channel.awaitMessages({ filter, max: 1, time: TIMEOUT, errors: ['time'] })).first().content;
 
@@ -101,45 +126,46 @@ client.on(Events.MessageCreate, async (message) => {
     withFooter(embed);
     const sent = await chan.send({ embeds: [embed] });
 
-    // 8) Dodajemy reakcje i zapisujemy w DB
+    // 8) Dodajemy reakcje, zapisujemy w DB i cache
     for (const p of pairs) {
       await sent.react(p.emoji).catch(console.error);
-      await ReactionRole.create({
+      const doc = await ReactionRole.create({
         guildId: message.guild.id,
         channelId: chan.id,
         messageId: sent.id,
         exclusive,
         emoji: p.emoji,
         roleId: p.roleId
-      }).catch(err => console.error('Błąd DB:', err));
+      });
+      // Aktualizuj cache
+      const key = `${doc.guildId}:${doc.messageId}`;
+      if (!reactionRoleCache.has(key)) reactionRoleCache.set(key, []);
+      reactionRoleCache.get(key).push(doc);
     }
 
     await message.channel.send('Reaction role utworzone!');
-  } catch {
+  } catch (e) {
+    console.error(e);
     message.channel.send('Coś poszło nie tak lub czas minął.');
   }
 });
 
-// Obsługa reaction roles – dodawanie roli
+// -------------------- HANDLERY REAKCJI --------------------
 client.on(Events.MessageReactionAdd, async (reaction, user) => {
   if (user.bot) return;
-  if (reaction.partial) {
-    try { await reaction.fetch(); } catch { return; }
-  }
-  if (reaction.message.partial) {
-    try { await reaction.message.fetch(); } catch { return; }
-  }
+  if (reaction.partial) try { await reaction.fetch(); } catch { return; }
+  if (reaction.message.partial) try { await reaction.message.fetch(); } catch { return; }
 
   const msg = reaction.message;
   const emojiKey = reaction.emoji.id ? `<:${reaction.emoji.name}:${reaction.emoji.id}>` : reaction.emoji.toString();
 
-  const entry = await ReactionRole.findOne({ messageId: msg.id, guildId: msg.guild.id, emoji: emojiKey });
+  const entries = getCacheEntries(msg.guild.id, msg.id);
+  const entry = entries.find(e => e.emoji === emojiKey);
   if (!entry) return;
 
   const member = await msg.guild.members.fetch(user.id);
   if (entry.exclusive) {
-    // usuń inne reakcje i role
-    for (const other of await ReactionRole.find({ messageId: msg.id, guildId: msg.guild.id })) {
+    for (const other of entries) {
       if (other.roleId !== entry.roleId) {
         await member.roles.remove(other.roleId).catch(() => {});
         const r = msg.reactions.cache.get(other.emoji);
@@ -150,29 +176,25 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
   await member.roles.add(entry.roleId).catch(console.error);
 });
 
-// Obsługa reaction roles – usuwanie roli
 client.on(Events.MessageReactionRemove, async (reaction, user) => {
   if (user.bot) return;
-  if (reaction.partial) {
-    try { await reaction.fetch(); } catch { return; }
-  }
-  if (reaction.message.partial) {
-    try { await reaction.message.fetch(); } catch { return; }
-  }
+  if (reaction.partial) try { await reaction.fetch(); } catch { return; }
+  if (reaction.message.partial) try { await reaction.message.fetch(); } catch { return; }
 
   const msg = reaction.message;
   const emojiKey = reaction.emoji.id ? `<:${reaction.emoji.name}:${reaction.emoji.id}>` : reaction.emoji.toString();
 
-  const entry = await ReactionRole.findOne({ messageId: msg.id, guildId: msg.guild.id, emoji: emojiKey });
+  const entries = getCacheEntries(msg.guild.id, msg.id);
+  const entry = entries.find(e => e.emoji === emojiKey);
   if (!entry) return;
 
   const member = await msg.guild.members.fetch(user.id);
   await member.roles.remove(entry.roleId).catch(console.error);
 });
 
-// Powitanie nowych członków
+// -------------------- POWITANIE --------------------
+const recentlyWelcomed = new Set();
 client.on(Events.GuildMemberAdd, async (member) => {
-  // Zapobiegamy podwójnemu powitaniu
   if (recentlyWelcomed.has(member.id)) return;
   recentlyWelcomed.add(member.id);
   setTimeout(() => recentlyWelcomed.delete(member.id), 5000);
