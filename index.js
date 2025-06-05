@@ -1,27 +1,41 @@
 require('dotenv').config();
 const { 
   Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, 
-  ButtonBuilder, ButtonStyle, PermissionsBitField, ChannelType, Events,
-  ActivityType
+  ButtonBuilder, ButtonStyle, PermissionsBitField, Events, ActivityType
 } = require('discord.js');
 require('./database'); // łączy z MongoDB
 const ReactionRole = require('./ReactionRole'); // model Mongoose
 
 // -------------------- CACHE SETUP --------------------
-// Reakcje przechowywane w pamięci dla szybszego dostępu
 const reactionRoleCache = new Map();
 
 async function loadReactionRoles() {
   try {
-    // Synchronizuj indeksy w DB
     await ReactionRole.syncIndexes();
-    // Pobierz wszystkie wpisy z kolekcji
     const all = await ReactionRole.find().lean();
+    const toFetch = new Map();
     for (const entry of all) {
       const key = `${entry.guildId}:${entry.messageId}`;
       if (!reactionRoleCache.has(key)) reactionRoleCache.set(key, []);
       reactionRoleCache.get(key).push(entry);
+      // Track messages to preload
+      const channelKey = `${entry.guildId}:${entry.channelId}`;
+      if (!toFetch.has(channelKey)) toFetch.set(channelKey, new Set());
+      toFetch.get(channelKey).add(entry.messageId);
     }
+
+    // Preload messages into cache to avoid partial fetch delays
+    for (const [chKey, msgs] of toFetch.entries()) {
+      const [guildId, channelId] = chKey.split(':');
+      const guild = client.guilds.cache.get(guildId);
+      if (!guild) continue;
+      const channel = guild.channels.cache.get(channelId);
+      if (!channel || !channel.isTextBased()) continue;
+      for (const msgId of msgs) {
+        channel.messages.fetch(msgId).catch(() => {});
+      }
+    }
+
     console.log(`Załadowano ${all.length} reakcji z bazy`);
   } catch (err) {
     console.error('Błąd ładowania reaction roles:', err);
@@ -54,17 +68,10 @@ const client = new Client({
 // -------------------- READY --------------------
 client.once(Events.ClientReady, async () => {
   console.log(`Bot zalogowany jako ${client.user.tag}`);
-  // Ustawienie statusu Streamingu
   client.user.setPresence({
-    activities: [{
-      name: 'cinamoinka',
-      type: ActivityType.Streaming,
-      url: 'https://twitch.tv/cinamoinka'
-    }],
+    activities: [{ name: 'cinamoinka', type: ActivityType.Streaming, url: 'https://twitch.tv/cinamoinka' }],
     status: 'online'
   });
-
-  // Załaduj cache reaction roles
   await loadReactionRoles();
 });
 
@@ -77,38 +84,30 @@ client.on(Events.MessageCreate, async (message) => {
   const TIMEOUT = 180000;
 
   try {
-    // 1) Wybór kanału
     await message.channel.send('Na jakim kanale ma być wiadomość? (podaj #nazwakanału)');
     const chanMsg = await message.channel.awaitMessages({ filter, max: 1, time: TIMEOUT, errors: ['time'] });
     const chan = chanMsg.first().mentions.channels.first();
     if (!chan) return message.channel.send('❌ Niepoprawny kanał. Przerwano.');
 
-    // 2) Tytuł embedu
     await message.channel.send('Podaj tytuł embeda:');
-    const title = (await message.channel.awaitMessages({ filter, max: 1, time: TIMEOUT, errors: ['time'] })).first().content;
+    const title = (await message.channel.awaitMessages({ filter, max: 1, time: TIMEOUT })).first().content;
 
-    // 3) Opis embeda
     await message.channel.send('Podaj treść embeda:');
-    const description = (await message.channel.awaitMessages({ filter, max: 1, time: TIMEOUT, errors: ['time'] })).first().content;
+    const description = (await message.channel.awaitMessages({ filter, max: 1, time: TIMEOUT })).first().content;
 
-    // 4) Kolor embedu
     await message.channel.send('Podaj kolor embeda:');
-    const color = (await message.channel.awaitMessages({ filter, max: 1, time: TIMEOUT, errors: ['time'] })).first().content;
+    const color = (await message.channel.awaitMessages({ filter, max: 1, time: TIMEOUT })).first().content;
 
-    // 5) Jednokrotny wybór?
     await message.channel.send('Czy role mają być jednokrotnego wyboru? (tak/nie)');
-    const exclusiveResp = (await message.channel.awaitMessages({ filter, max: 1, time: TIMEOUT, errors: ['time'] })).first().content.toLowerCase();
-    const exclusive = exclusiveResp === 'tak';
+    const exclusive = (await message.channel.awaitMessages({ filter, max: 1, time: TIMEOUT })).first().content.toLowerCase() === 'tak';
 
-    // 6) Parowanie emoji ↔️ rola
     const pairs = [];
     await message.channel.send("Podaj reakcję i rolę (emoji @rola). Wpisz 'gotowe' by zakończyć.");
     while (true) {
-      const resp = await message.channel.awaitMessages({ filter, max: 1, time: TIMEOUT, errors: ['time'] });
+      const resp = await message.channel.awaitMessages({ filter, max: 1, time: TIMEOUT });
       const text = resp.first().content.trim();
       if (text.toLowerCase() === 'gotowe') break;
-
-      const [em, ...rest] = text.split(/\s+/);
+      const [em] = text.split(/\s+/);
       const role = resp.first().mentions.roles.first();
       if (!em || !role) {
         await message.channel.send('Niepoprawny format, użyj: <emoji> @rola');
@@ -118,26 +117,13 @@ client.on(Events.MessageCreate, async (message) => {
       await message.channel.send(`Dodano: ${em} -> ${role.name}`);
     }
 
-    // 7) Wysyłamy embed
-    const embed = new EmbedBuilder()
-      .setTitle(title)
-      .setDescription(description)
-      .setColor(color);
+    const embed = new EmbedBuilder().setTitle(title).setDescription(description).setColor(color);
     withFooter(embed);
     const sent = await chan.send({ embeds: [embed] });
 
-    // 8) Dodajemy reakcje, zapisujemy w DB i cache
     for (const p of pairs) {
       await sent.react(p.emoji).catch(console.error);
-      const doc = await ReactionRole.create({
-        guildId: message.guild.id,
-        channelId: chan.id,
-        messageId: sent.id,
-        exclusive,
-        emoji: p.emoji,
-        roleId: p.roleId
-      });
-      // Aktualizuj cache
+      const doc = await ReactionRole.create({ guildId: message.guild.id, channelId: chan.id, messageId: sent.id, exclusive, emoji: p.emoji, roleId: p.roleId });
       const key = `${doc.guildId}:${doc.messageId}`;
       if (!reactionRoleCache.has(key)) reactionRoleCache.set(key, []);
       reactionRoleCache.get(key).push(doc);
@@ -158,22 +144,23 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
 
   const msg = reaction.message;
   const emojiKey = reaction.emoji.id ? `<:${reaction.emoji.name}:${reaction.emoji.id}>` : reaction.emoji.toString();
-
   const entries = getCacheEntries(msg.guild.id, msg.id);
   const entry = entries.find(e => e.emoji === emojiKey);
   if (!entry) return;
 
-  const member = await msg.guild.members.fetch(user.id);
+  let member = msg.guild.members.cache.get(user.id);
+  if (!member) member = await msg.guild.members.fetch(user.id);
+
   if (entry.exclusive) {
-    for (const other of entries) {
-      if (other.roleId !== entry.roleId) {
-        await member.roles.remove(other.roleId).catch(() => {});
-        const r = msg.reactions.cache.get(other.emoji);
-        if (r) await r.users.remove(user.id).catch(() => {});
-      }
-    }
+    // Równoległe usunięcie wszystkich innych
+    await Promise.all(entries.filter(o => o.roleId !== entry.roleId).map(async other => {
+      await member.roles.remove(other.roleId).catch(() => {});
+      const r = msg.reactions.cache.get(other.emoji);
+      if (r) r.users.remove(user.id).catch(() => {});
+    }));
   }
-  await member.roles.add(entry.roleId).catch(console.error);
+
+  member.roles.add(entry.roleId).catch(console.error);
 });
 
 client.on(Events.MessageReactionRemove, async (reaction, user) => {
@@ -183,13 +170,14 @@ client.on(Events.MessageReactionRemove, async (reaction, user) => {
 
   const msg = reaction.message;
   const emojiKey = reaction.emoji.id ? `<:${reaction.emoji.name}:${reaction.emoji.id}>` : reaction.emoji.toString();
-
   const entries = getCacheEntries(msg.guild.id, msg.id);
   const entry = entries.find(e => e.emoji === emojiKey);
   if (!entry) return;
 
-  const member = await msg.guild.members.fetch(user.id);
-  await member.roles.remove(entry.roleId).catch(console.error);
+  let member = msg.guild.members.cache.get(user.id);
+  if (!member) member = await msg.guild.members.fetch(user.id);
+
+  member.roles.remove(entry.roleId).catch(console.error);
 });
 
 // -------------------- POWITANIE --------------------
